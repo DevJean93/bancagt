@@ -1,0 +1,15 @@
+# Vault en modo dev (laboratorio): almacenamiento en memoria y sin sellado.
+# La configuración (KV, auth kubernetes, políticas, auditoría) la reaplica un
+# CronJob idempotente definido en Terraform, así sobrevive a reinicios del pod.
+# En producción: modo HA con Raft, TLS y auto-unseal con KMS (ver informe).
+injector:
+  enabled: false
+server:
+  dev:
+    enabled: true
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+  dataStorage:
+    enabled: false
+ui:
+  enabled: true

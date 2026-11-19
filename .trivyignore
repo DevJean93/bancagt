@@ -1,0 +1,4 @@
+# Excepciones documentadas al escaneo de configuración (Trivy config).
+# Cada línea debe tener justificación y estar reflejada en la matriz de riesgos.
+#
+# (vacío: no hay excepciones aprobadas por ahora)

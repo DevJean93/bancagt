@@ -1,0 +1,85 @@
+# Valores por defecto del chart. Los del entorno productivo están en
+# deploy/envs/prod/values.yaml (ahí la CI escribe tag y digest de cada imagen).
+
+dominio: 127.0.0.1.nip.io
+registro: ghcr.io/devjean93/bancagt
+
+servicios:
+  web-banca:
+    imagen: { tag: "", digest: "" }
+    ruta: /
+    replicas: 2
+    uid: 101
+    db: false
+    metricas: false
+    env: {}
+    recursos:
+      requests: { cpu: 10m, memory: 16Mi }
+      limits: { memory: 64Mi }
+  api-cuentas:
+    imagen: { tag: "", digest: "" }
+    ruta: /api/v1/cuentas
+    replicas: 2
+    uid: 65532
+    db: true
+    metricas: true
+    env:
+      LOG_LEVEL: info
+      FAULT_RATE: "0"
+      FAULT_LATENCY_MS: "0"
+    recursos:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits: { memory: 192Mi }
+  api-transferencias:
+    imagen: { tag: "", digest: "" }
+    ruta: /api/v1/transferencias
+    replicas: 2
+    uid: 65532
+    db: true
+    metricas: true
+    env:
+      LOG_LEVEL: info
+      FAULT_RATE: "0"
+      FAULT_LATENCY_MS: "0"
+    recursos:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits: { memory: 192Mi }
+
+# Despliegue progresivo (Argo Rollouts + Traefik).
+canary:
+  pasos:
+    - setWeight: 10
+    - pause: { duration: 60s }
+    - setWeight: 25
+    - pause: { duration: 60s }
+    - setWeight: 50
+    - pause: { duration: 60s }
+  # Compuertas del análisis automático (si se violan → rollback).
+  maxTasaError: "0.01"   # 1 % de respuestas 5xx
+  maxLatenciaP95: "0.3"  # 300 ms
+  prometheus: http://kps-kube-prometheus-stack-prometheus.monitoring.svc:9090
+
+# Límite de peticiones por IP en el Ingress (mitiga fuerza bruta y abuso).
+rateLimit:
+  promedio: 50
+  rafaga: 100
+
+baseDatos:
+  instancias: 2
+  almacenamiento: 1Gi
+  # DRP: cada "generación" escribe sus WAL en una carpeta distinta del bucket.
+  generacion: 1
+  # Si se indica (p. ej. "banca-db-g1"), el clúster se crea RECUPERANDO
+  # desde ese respaldo en lugar de inicializarse vacío.
+  recuperarDe: ""
+  # Momento objetivo de recuperación (PITR). Vacío = lo más reciente posible.
+  recuperarHasta: ""
+  respaldo:
+    bucket: s3://cnpg/
+    endpoint: http://bancagt-s3:8333
+    retencion: 7d
+    horario: "0 0 * * * *"   # base backup cada hora (los WAL son continuos)
+
+vault:
+  servidor: http://vault.vault.svc:8200
+  rol: banca

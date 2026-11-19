@@ -1,0 +1,143 @@
+{{- $db := .Values.baseDatos }}
+{{- $servidor := printf "banca-db-g%v" $db.generacion }}
+# =====================================================================
+# PostgreSQL de alta disponibilidad con CloudNativePG.
+# - 2 instancias (primaria + réplica síncrona en otro nodo) → failover automático.
+# - WAL continuo a S3 (archive_timeout 5 min) → RPO ≤ 5 min.
+# - Base backup cada hora → RTO acotado (restaurar base + reproducir WAL).
+# - TLS obligatorio y autenticación SCRAM-SHA-256.
+# =====================================================================
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: banca-respaldo
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  retentionPolicy: {{ $db.respaldo.retencion | quote }}
+  configuration:
+    destinationPath: {{ $db.respaldo.bucket }}
+    endpointURL: {{ $db.respaldo.endpoint }}
+    s3Credentials:
+      accessKeyId: { name: banca-s3, key: ACCESS_KEY_ID }
+      secretAccessKey: { name: banca-s3, key: ACCESS_SECRET_KEY }
+    wal:
+      compression: gzip
+      maxParallel: 2
+    data:
+      compression: gzip
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: banca-db-esquema
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+data:
+  esquema.sql: |
+{{ .Files.Get "files/esquema.sql" | indent 4 }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: banca-db
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    # El clúster de BD nunca se borra por un "prune" accidental de Argo CD.
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+spec:
+  instances: {{ $db.instancias }}
+  minSyncReplicas: 1
+  maxSyncReplicas: 1
+  enableSuperuserAccess: false
+  storage:
+    size: {{ $db.almacenamiento }}
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+  resources:
+    requests: { cpu: 50m, memory: 256Mi }
+    limits: { memory: 512Mi }
+  postgresql:
+    parameters:
+      archive_timeout: "5min"
+      password_encryption: scram-sha-256
+      log_connections: "on"
+      log_disconnections: "on"
+      log_statement: ddl
+      ssl_min_protocol_version: TLSv1.3
+    pg_hba:
+      # Solo conexiones cifradas con contraseña SCRAM.
+      - hostssl all all all scram-sha-256
+  managed:
+    roles:
+      - name: banca
+        ensure: present
+        login: true
+        connectionLimit: 40
+        passwordSecret:
+          name: banca-db-app
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: banca-respaldo
+        serverName: {{ $servidor }}
+  bootstrap:
+    {{- if $db.recuperarDe }}
+    # DRP: el clúster nace recuperando base backup + WAL desde S3.
+    recovery:
+      source: origen
+      database: banca
+      owner: banca
+      secret:
+        name: banca-db-app
+      {{- if $db.recuperarHasta }}
+      recoveryTarget:
+        targetTime: {{ $db.recuperarHasta | quote }}
+      {{- end }}
+    {{- else }}
+    initdb:
+      database: banca
+      owner: banca
+      secret:
+        name: banca-db-app
+      postInitApplicationSQLRefs:
+        configMapRefs:
+          - name: banca-db-esquema
+            key: esquema.sql
+    {{- end }}
+  {{- if $db.recuperarDe }}
+  externalClusters:
+    - name: origen
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: banca-respaldo
+          serverName: {{ $db.recuperarDe }}
+  {{- end }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: banca-db-horario
+spec:
+  schedule: {{ $db.respaldo.horario | quote }}
+  immediate: true
+  backupOwnerReference: self
+  cluster:
+    name: banca-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: banca-db
+spec:
+  selector:
+    matchLabels:
+      cnpg.io/cluster: banca-db
+  podMetricsEndpoints:
+    - port: metrics

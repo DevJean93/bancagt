@@ -1,0 +1,16 @@
+# Prometheus recoge /metrics de TODOS los pods de las APIs (estables y canary).
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: banca-apis
+spec:
+  selector:
+    matchLabels:
+      banca/metricas: "true"
+  podTargetLabels:
+    - app.kubernetes.io/name
+    - rollouts-pod-template-hash
+  podMetricsEndpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

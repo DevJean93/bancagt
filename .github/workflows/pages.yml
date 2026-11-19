@@ -1,0 +1,59 @@
+# Publica en GitHub Pages el sitio de evidencias: documentación (runbook,
+# post-mortem, DRP, matriz de cumplimiento) y los últimos reportes de seguridad.
+# Queda visible aunque el clúster local esté apagado.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['docs/**', 'evidencias/**', '.github/workflows/pages.yml']
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Descargar reportes del último CI exitoso en main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p sitio/reportes
+          run_id=$(gh run list --workflow ci --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" --pattern 'evidencias-*' --dir sitio/reportes || true
+            gh run download "$run_id" --name reporte-semgrep --dir sitio/reportes/semgrep || true
+          fi
+      - name: Armar sitio
+        run: |
+          cp -r docs/* sitio/
+          [ -d evidencias ] && cp -r evidencias sitio/evidencias || true
+          node docs/_construir-indice.mjs sitio
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: sitio
+
+  publicar:
+    needs: construir
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

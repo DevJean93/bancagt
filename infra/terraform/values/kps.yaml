@@ -1,0 +1,56 @@
+# kube-prometheus-stack: Prometheus + Alertmanager + Grafana.
+# Con los selectores en false, Prometheus lee TODAS las reglas y ServiceMonitors
+# del clúster (incluidas las reglas SLO definidas en Git).
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    retention: 7d
+    resources:
+      requests: { cpu: 200m, memory: 512Mi }
+      limits: { memory: 2Gi }
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 10m, memory: 32Mi }
+grafana:
+  grafana.ini:
+    server:
+      root_url: https://grafana.127.0.0.1.nip.io
+    security:
+      cookie_secure: true
+      disable_gravatar: true
+    users:
+      allow_sign_up: false
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      uid: loki
+      type: loki
+      url: http://loki.observabilidad.svc:3100
+    - name: Tempo
+      uid: tempo
+      type: tempo
+      url: http://tempo.observabilidad.svc:3200
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+        serviceMap:
+          datasourceUid: prometheus
+# En kind estos componentes solo escuchan en localhost del nodo: se omiten para evitar alertas falsas.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false

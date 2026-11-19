@@ -1,0 +1,30 @@
+# Configuración de plataforma declarada en Git (emisores TLS, políticas,
+# reglas SLO, dashboards, respaldos). Se sincroniza antes que la aplicación.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: plataforma
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/DevJean93/bancagt.git
+    targetRevision: main
+    path: deploy/platform
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff: { duration: 15s, factor: 2, maxDuration: 3m }

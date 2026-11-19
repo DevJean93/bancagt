@@ -1,0 +1,37 @@
+# Compuerta automática del canary. Se mide en el Ingress (Traefik) SOLO el
+# tráfico que va al servicio canary. Si la tasa de error supera el 1 % o la
+# latencia p95 supera 300 ms, el análisis falla y Argo Rollouts hace rollback.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: analisis-canary
+spec:
+  args:
+    - name: servicio
+  metrics:
+    - name: tasa-error-5xx
+      interval: 20s
+      failureLimit: 1
+      consecutiveErrorLimit: 3
+      successCondition: isNaN(result[0]) || result[0] <= {{ .Values.canary.maxTasaError }}
+      provider:
+        prometheus:
+          address: {{ .Values.canary.prometheus }}
+          query: |
+            (
+              sum(rate(traefik_service_requests_total{service=~"{{ .Release.Namespace }}-{{ "{{" }}args.servicio{{ "}}" }}-canary-.*", code=~"5.."}[1m]))
+              /
+              sum(rate(traefik_service_requests_total{service=~"{{ .Release.Namespace }}-{{ "{{" }}args.servicio{{ "}}" }}-canary-.*"}[1m]))
+            ) or vector(0)
+    - name: latencia-p95
+      interval: 20s
+      failureLimit: 1
+      consecutiveErrorLimit: 3
+      successCondition: isNaN(result[0]) || result[0] <= {{ .Values.canary.maxLatenciaP95 }}
+      provider:
+        prometheus:
+          address: {{ .Values.canary.prometheus }}
+          query: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(traefik_service_request_duration_seconds_bucket{service=~"{{ .Release.Namespace }}-{{ "{{" }}args.servicio{{ "}}" }}-canary-.*"}[1m]))
+            ) or vector(0)

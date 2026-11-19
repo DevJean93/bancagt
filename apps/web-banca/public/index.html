@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BancaGT en Línea</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="barra">
+    <div class="marca"><span class="logo">B</span> BancaGT <small>en Línea</small></div>
+    <span class="aviso">Entorno de laboratorio · datos ficticios</span>
+  </header>
+
+  <main class="contenedor">
+    <section class="tarjeta">
+      <h1>Consulta de cuenta</h1>
+      <form id="form-consulta" class="fila">
+        <label for="cuenta">Número de cuenta</label>
+        <input id="cuenta" name="cuenta" inputmode="numeric" pattern="\d{4}" maxlength="4" value="1001" required>
+        <button type="submit">Consultar</button>
+      </form>
+      <div id="saldo" class="saldo" hidden>
+        <span id="titular"></span>
+        <strong id="monto"></strong>
+      </div>
+      <table id="movimientos" hidden>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Referencia</th><th class="num">Monto</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Transferir entre cuentas</h2>
+      <form id="form-transferencia" class="rejilla">
+        <label>Cuenta origen <input name="origen" inputmode="numeric" pattern="\d{4}" maxlength="4" value="1001" required></label>
+        <label>Cuenta destino <input name="destino" inputmode="numeric" pattern="\d{4}" maxlength="4" value="1003" required></label>
+        <label>Monto <input name="monto" type="number" min="0.01" max="50000" step="0.01" value="100.00" required></label>
+        <button type="submit">Transferir</button>
+      </form>
+      <p id="resultado" class="resultado" role="status"></p>
+    </section>
+  </main>
+
+  <footer class="pie">Proyecto Final AWySI · MIBC 2026 · <span id="version"></span></footer>
+  <script src="/app.js"></script>
+</body>
+</html>

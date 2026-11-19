@@ -1,0 +1,207 @@
+{{- range $nombre, $svc := .Values.servicios }}
+{{- $ctx := dict "nombre" $nombre "svc" $svc "raiz" $ }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $nombre }}
+  labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+# Los pods no necesitan hablar con la API de Kubernetes.
+automountServiceAccountToken: false
+---
+# Servicio estable (recibe el tráfico de la versión aprobada).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $nombre }}
+  labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $nombre }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Servicio canary (Argo Rollouts lo apunta a los pods de la versión nueva).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $nombre }}-canary
+  labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ $nombre }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+# Reparto de tráfico ponderado que Argo Rollouts ajusta paso a paso.
+apiVersion: traefik.io/v1alpha1
+kind: TraefikService
+metadata:
+  name: {{ $nombre }}-ponderado
+  labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+spec:
+  weighted:
+    services:
+      - name: {{ $nombre }}
+        port: 8080
+        weight: 100
+      - name: {{ $nombre }}-canary
+        port: 8080
+        weight: 0
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $nombre }}
+  labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $nombre }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ $nombre }}
+  labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $nombre }}
+  template:
+    metadata:
+      labels:
+        {{- include "banca.etiquetas" $ctx | nindent 8 }}
+        {{- if $svc.db }}
+        banca/cliente-db: "true"
+        {{- end }}
+        {{- if $svc.metricas }}
+        banca/metricas: "true"
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $nombre }}
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ $svc.uid }}
+        runAsGroup: {{ $svc.uid }}
+        fsGroup: {{ $svc.uid }}
+        seccompProfile:
+          type: RuntimeDefault
+      # Reparte las réplicas entre nodos: la caída de un nodo no tumba el servicio.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ $nombre }}
+      containers:
+        - name: {{ $nombre }}
+          image: {{ include "banca.imagen" $ctx | quote }}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: prod
+            {{- range $k, $v := $svc.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- if $svc.db }}
+            - name: DB_HOST
+              value: banca-db-rw
+            - name: DB_NAME
+              value: banca
+            - name: DB_USER_FILE
+              value: /etc/banca/db/username
+            - name: DB_PASSWORD_FILE
+              value: /etc/banca/db/password
+            - name: DB_SSL_CA
+              value: /etc/banca/db-ca/ca.crt
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://tempo.observabilidad.svc:4318
+            - name: OTEL_SERVICE_NAME
+              value: {{ $nombre }}
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources: {{- toYaml $svc.recursos | nindent 12 }}
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: {{ if $svc.db }}/ready{{ else }}/health{{ end }}, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          lifecycle:
+            # Da tiempo a que el Service deje de enviar tráfico antes de apagar (zero-downtime).
+            preStop:
+              sleep:
+                seconds: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if $svc.db }}
+            - name: db-credenciales
+              mountPath: /etc/banca/db
+              readOnly: true
+            - name: db-ca
+              mountPath: /etc/banca/db-ca
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
+        {{- if $svc.db }}
+        - name: db-credenciales
+          secret:
+            secretName: banca-db-app
+            items:
+              - { key: username, path: username }
+              - { key: password, path: password }
+        - name: db-ca
+          secret:
+            secretName: banca-db-ca
+            items:
+              - { key: ca.crt, path: ca.crt }
+        {{- end }}
+  strategy:
+    canary:
+      stableService: {{ $nombre }}
+      canaryService: {{ $nombre }}-canary
+      trafficRouting:
+        traefik:
+          weightedTraefikServiceName: {{ $nombre }}-ponderado
+      # Análisis en segundo plano desde el primer paso: si una métrica falla,
+      # Argo Rollouts aborta y devuelve el 100 % del tráfico a la versión estable.
+      analysis:
+        startingStep: 1
+        templates:
+          - templateName: analisis-canary
+        args:
+          - name: servicio
+            value: {{ $nombre }}
+      steps: {{- toYaml $.Values.canary.pasos | nindent 8 }}
+{{- end }}

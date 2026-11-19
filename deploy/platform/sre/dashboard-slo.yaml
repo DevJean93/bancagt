@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-bancagt-slo
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  bancagt-slo.json: |
+    {
+      "uid": "bancagt-slo",
+      "title": "BancaGT · SLO y presupuesto de error",
+      "tags": ["bancagt", "slo"],
+      "timezone": "browser",
+      "refresh": "30s",
+      "time": { "from": "now-3h", "to": "now" },
+      "schemaVersion": 39,
+      "panels": [
+        { "type": "text", "title": "", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
+          "options": { "mode": "markdown", "content": "**SLO de disponibilidad: 99.99 %** · Presupuesto de error = 1 − SLO = **0.0001** → **4.32 min** cada 30 días (52.6 min/año). SLI medido en el Ingress: peticiones que no terminan en 5xx. Alertas: consumo 14.4× (1 h y 5 min) y 6× (6 h y 30 min)." } },
+
+        { "type": "stat", "title": "Disponibilidad (30 d)", "gridPos": { "x": 0, "y": 3, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "banca:sli_disponibilidad:ratio_rate30d", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 4,
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 0.9999 } ] } } } },
+
+        { "type": "stat", "title": "Presupuesto de error restante", "gridPos": { "x": 6, "y": 3, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "clamp_min(banca:presupuesto_error:restante, -1)", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1,
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 0.25 }, { "color": "green", "value": 0.5 } ] } } } },
+
+        { "type": "stat", "title": "Minutos de indisponibilidad que quedan (de 4.32)", "gridPos": { "x": 12, "y": 3, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "clamp_min(banca:presupuesto_error:restante, 0) * 4.32", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "m", "decimals": 2,
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 1 }, { "color": "green", "value": 2.16 } ] } } } },
+
+        { "type": "stat", "title": "Latencia p95 (5 min)", "gridPos": { "x": 18, "y": 3, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "banca:latencia_p95:5m", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "s", "decimals": 3,
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 0.3 } ] } } } },
+
+        { "type": "timeseries", "title": "Tasa de consumo del presupuesto (burn rate)", "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "banca:sli_errores:ratio_rate5m / 0.0001", "legendFormat": "5 min", "refId": "A" },
+            { "expr": "banca:sli_errores:ratio_rate1h / 0.0001", "legendFormat": "1 h", "refId": "B" },
+            { "expr": "banca:sli_errores:ratio_rate6h / 0.0001", "legendFormat": "6 h", "refId": "C" }
+          ],
+          "fieldConfig": { "defaults": { "unit": "x", "custom": { "thresholdsStyle": { "mode": "line" } },
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 6 }, { "color": "red", "value": 14.4 } ] } } } },
+
+        { "type": "timeseries", "title": "Tráfico por servicio: estable vs canary (Ingress)", "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (service) (rate(traefik_service_requests_total{service=~\"banca-prod-.*\"}[1m]))", "legendFormat": "{{service}}", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "reqps" } } },
+
+        { "type": "timeseries", "title": "Respuestas 5xx por servicio (aplicación)", "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (servicio, rollouts_pod_template_hash) (rate(http_requests_total{namespace=\"banca-prod\", code=~\"5..\"}[1m]))", "legendFormat": "{{servicio}} ({{rollouts_pod_template_hash}})", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "reqps" } } },
+
+        { "type": "timeseries", "title": "Latencia p95 por servicio (aplicación)", "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, servicio) (rate(http_request_duration_seconds_bucket{namespace=\"banca-prod\"}[5m])))", "legendFormat": "{{servicio}}", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "s" } } },
+
+        { "type": "stat", "title": "Antigüedad del último WAL archivado (RPO)", "gridPos": { "x": 0, "y": 24, "w": 8, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "time() - max(cnpg_pg_stat_archiver_last_archived_time{namespace=\"banca-prod\"})", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "s",
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 600 }, { "color": "red", "value": 900 } ] } } } },
+
+        { "type": "stat", "title": "Retraso de replicación PostgreSQL", "gridPos": { "x": 8, "y": 24, "w": 8, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "max(cnpg_pg_replication_lag{namespace=\"banca-prod\"})", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "s" } } },
+
+        { "type": "stat", "title": "Alertas SLO activas", "gridPos": { "x": 16, "y": 24, "w": 8, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "count(ALERTS{alertstate=\"firing\", alertname=~\"Banca.*\"}) or vector(0)", "refId": "A" }],
+          "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } } } }
+      ]
+    }

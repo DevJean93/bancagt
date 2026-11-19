@@ -1,0 +1,27 @@
+# Entorno productivo (rama main). La CI actualiza imagen.tag e imagen.digest
+# después de escanear, firmar y publicar cada imagen. Argo CD lo aplica solo.
+servicios:
+  web-banca:
+    imagen:
+      tag: ""
+      digest: ""
+  api-cuentas:
+    imagen:
+      tag: ""
+      digest: ""
+    env:
+      LOG_LEVEL: info
+      FAULT_RATE: "0"
+      FAULT_LATENCY_MS: "0"
+  api-transferencias:
+    imagen:
+      tag: ""
+      digest: ""
+    env:
+      LOG_LEVEL: info
+      FAULT_RATE: "0"
+      FAULT_LATENCY_MS: "0"
+
+baseDatos:
+  generacion: 1
+  recuperarDe: ""

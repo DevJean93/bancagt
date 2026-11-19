@@ -1,0 +1,127 @@
+# =====================================================================
+# Políticas de admisión (Kyverno 1.20, motor CEL) para banca-prod.
+# Complementan Pod Security "restricted": lo que no cumple NO entra al clúster.
+# =====================================================================
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: banca-registros-permitidos
+  annotations:
+    policies.kyverno.io/title: Solo imágenes de registros aprobados
+    policies.kyverno.io/description: >-
+      En banca-prod solo se ejecutan imágenes del registro del proyecto (GHCR)
+      y de CloudNativePG. Mitiga imágenes no confiables (PCI-DSS 6.3.2, SSDF PW.4).
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: banca-prod
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: aprobada
+      expression: >-
+        ['ghcr.io/devjean93/bancagt/', 'ghcr.io/cloudnative-pg/']
+  validations:
+    - expression: >-
+        object.spec.containers.all(c, variables.aprobada.exists(p, c.image.startsWith(p))) &&
+        object.spec.?initContainers.orValue([]).all(c, variables.aprobada.exists(p, c.image.startsWith(p)))
+      message: "Imagen no permitida: solo ghcr.io/devjean93/bancagt/* o ghcr.io/cloudnative-pg/*"
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: banca-prohibir-latest
+  annotations:
+    policies.kyverno.io/title: Versiones fijas, nunca latest
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: banca-prod
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  validations:
+    - expression: >-
+        object.spec.containers.all(c,
+          !c.image.endsWith(':latest') && (c.image.contains('@sha256:') || c.image.matches(':[^/]+$')))
+      message: "Las imágenes deben tener versión fija o digest (no 'latest' ni sin etiqueta)."
+---
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: banca-hardening-contenedor
+  annotations:
+    policies.kyverno.io/title: Raíz de solo lectura y límite de memoria obligatorios
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: banca-prod
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchConditions:
+    - name: solo-pods-de-la-app
+      expression: >-
+        object.metadata.?labels[?'app.kubernetes.io/part-of'].orValue('') == 'bancagt'
+  validations:
+    - expression: >-
+        object.spec.containers.all(c, c.?securityContext.?readOnlyRootFilesystem.orValue(false) == true)
+      message: "Los contenedores de la app deben usar readOnlyRootFilesystem: true."
+    - expression: >-
+        object.spec.containers.all(c, c.?resources.?limits[?'memory'].hasValue())
+      message: "Los contenedores de la app deben declarar un límite de memoria."
+---
+# Cadena de suministro: solo corren imágenes FIRMADAS por el pipeline de
+# GitHub Actions de este repositorio (cosign keyless, registro en Rekor).
+# Kyverno además reescribe la imagen al digest verificado.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: banca-verificar-firma
+  annotations:
+    policies.kyverno.io/title: Verificar firma cosign de las imágenes
+spec:
+  validationActions: [Deny]
+  webhookConfiguration:
+    timeoutSeconds: 30
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: banca-prod
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  matchImageReferences:
+    - glob: "ghcr.io/devjean93/bancagt/*"
+  validationConfigurations:
+    required: true
+    mutateDigest: true
+    verifyDigest: true
+  attestors:
+    - name: pipeline
+      cosign:
+        keyless:
+          identities:
+            - issuer: https://token.actions.githubusercontent.com
+              subject: https://github.com/DevJean93/bancagt/.github/workflows/ci.yml@refs/heads/main
+        ctlog:
+          url: https://rekor.sigstore.dev
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.pipeline])).all(e, e > 0)
+      message: "La imagen no está firmada por el pipeline de CI de DevJean93/bancagt (rama main)."

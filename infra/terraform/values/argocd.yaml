@@ -1,0 +1,24 @@
+global:
+  domain: argocd.127.0.0.1.nip.io
+configs:
+  params:
+    # TLS termina en Traefik (TLS 1.3); dentro del clúster el tráfico va por la red protegida.
+    server.insecure: true
+  cm:
+    # Consulta Git cada 60 s (modelo pull: no se abren puertos hacia la laptop).
+    timeout.reconciliation: 60s
+    admin.enabled: true
+    exec.enabled: false
+dex:
+  enabled: false
+notifications:
+  enabled: false
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+server:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }

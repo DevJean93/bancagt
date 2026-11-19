@@ -1,0 +1,23 @@
+{
+  "name": "api-transferencias",
+  "version": "1.0.0",
+  "description": "BancaGT - microservicio de transferencias entre cuentas",
+  "main": "src/server.js",
+  "private": true,
+  "scripts": {
+    "start": "node --require ./src/lib/tracing.js src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@opentelemetry/exporter-trace-otlp-http": "0.301.2",
+    "@opentelemetry/instrumentation-http": "0.301.2",
+    "@opentelemetry/instrumentation-pg": "0.78.0",
+    "@opentelemetry/sdk-node": "0.301.2",
+    "pg": "8.23.1",
+    "prom-client": "15.1.3"
+  }
+}

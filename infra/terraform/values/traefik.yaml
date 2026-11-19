@@ -1,0 +1,55 @@
+# Traefik: Ingress Controller con TLS 1.3 (TLSOption "default" en deploy/platform)
+# y redirección permanente de HTTP a HTTPS.
+deployment:
+  replicas: 2
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+service:
+  spec:
+    type: NodePort
+ports:
+  web:
+    nodePort: 30080
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    nodePort: 30443
+    http3:
+      enabled: false
+    http:
+      tls:
+        enabled: true
+      # HSTS y encabezados de seguridad para TODAS las respuestas HTTPS
+      # (Middleware "seguridad" definido en deploy/platform/tls).
+      middlewares:
+        - traefik-seguridad@kubernetescrd
+providers:
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: false
+    allowExternalNameServices: false
+  kubernetesIngress:
+    enabled: false
+ingressRoute:
+  dashboard:
+    enabled: false
+metrics:
+  prometheus:
+    addServicesLabels: true
+    addEntryPointsLabels: true
+    addRoutersLabels: true
+    service:
+      enabled: true
+log:
+  format: json
+accessLog:
+  enabled: true
+  format: json
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 256Mi }

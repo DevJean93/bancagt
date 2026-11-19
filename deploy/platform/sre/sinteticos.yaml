@@ -1,0 +1,105 @@
+# Monitoreo sintético: un cliente k6 recorre el flujo del portal 24/7 entrando
+# por el Ingress (HTTPS) igual que un usuario. Garantiza que siempre haya datos
+# para los SLI y para el análisis del canary, aun sin usuarios reales.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: banca-sinteticos
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-sondeo
+  namespace: banca-sinteticos
+data:
+  sondeo.js: |
+    import http from 'k6/http';
+    import { check } from 'k6';
+
+    const BASE = 'https://banca.127.0.0.1.nip.io';
+
+    export const options = {
+      insecureSkipTLSVerify: true, // CA interna del laboratorio
+      scenarios: {
+        sondeo: {
+          executor: 'constant-arrival-rate',
+          rate: 5,
+          timeUnit: '1s',
+          duration: '8760h',
+          preAllocatedVUs: 5,
+          maxVUs: 20,
+        },
+      },
+    };
+
+    const cuentas = ['1001', '1002', '1003'];
+
+    export default function () {
+      const n = Math.floor(Math.random() * 100);
+      if (n < 10) {
+        // 10 %: transferencia pequeña de ida y vuelta (saldo neto constante).
+        const ida = n % 2 === 0;
+        const r = http.post(
+          `${BASE}/api/v1/transferencias`,
+          JSON.stringify({ origen: ida ? '1001' : '1003', destino: ida ? '1003' : '1001', monto: 1 }),
+          { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `sondeo-${__VU}-${__ITER}-${Date.now()}` }, tags: { flujo: 'transferencia' } },
+        );
+        check(r, { 'transferencia 2xx': (x) => x.status === 201 || x.status === 200 });
+      } else if (n < 20) {
+        const r = http.get(`${BASE}/`, { tags: { flujo: 'portal' } });
+        check(r, { 'portal 200': (x) => x.status === 200 });
+      } else {
+        const c = cuentas[n % cuentas.length];
+        const r = http.get(`${BASE}/api/v1/cuentas/${c}/saldo`, { tags: { flujo: 'saldo' } });
+        check(r, { 'saldo 200': (x) => x.status === 200 });
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k6-sondeo
+  namespace: banca-sinteticos
+  labels:
+    app.kubernetes.io/name: k6-sondeo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: k6-sondeo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: k6-sondeo
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: k6
+          image: grafana/k6:2.4.0
+          args: ["run", "--quiet", "--no-summary", "/scripts/sondeo.js"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-sondeo
+        - name: tmp
+          emptyDir: {}

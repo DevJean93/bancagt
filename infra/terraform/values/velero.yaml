@@ -1,0 +1,21 @@
+initContainers:
+  - name: velero-plugin-for-aws
+    image: velero/velero-plugin-for-aws:v1.14.4
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: velero
+      default: true
+      config:
+        region: us-east-1
+        s3ForcePathStyle: "true"
+        s3Url: http://bancagt-s3:8333
+  volumeSnapshotLocation: []
+snapshotsEnabled: false
+deployNodeAgent: false
+resources:
+  requests: { cpu: 20m, memory: 64Mi }

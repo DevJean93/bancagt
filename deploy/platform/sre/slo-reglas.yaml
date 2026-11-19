@@ -1,0 +1,111 @@
+# =====================================================================
+# SLI / SLO de BancaGT y alertas por tasa de consumo del presupuesto de error.
+#
+#   SLO de disponibilidad = 99.99 %   →   Presupuesto de error = 1 - SLO = 0.0001
+#   En 30 días: 0.0001 × 43 200 min = 4.32 min de indisponibilidad permitida.
+#
+# SLI de disponibilidad: proporción de peticiones al Ingress que NO terminan en 5xx.
+# SLI de latencia: proporción de peticiones atendidas en ≤ 300 ms (SLO 99 %).
+#
+# Alertas multi-ventana (Google SRE Workbook, cap. 5):
+#   - Página crítica: consumo 14.4x en 1 h Y en 5 min (agota el 2 % del presupuesto en 1 h).
+#   - Página alta:    consumo 6x en 6 h Y en 30 min (agota el 5 % en 6 h).
+# =====================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: banca-slo
+  namespace: monitoring
+spec:
+  groups:
+    - name: banca-sli
+      interval: 30s
+      rules:
+        - record: banca:sli_errores:ratio_rate5m
+          expr: |
+            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[5m]))
+            / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[5m]))
+        - record: banca:sli_errores:ratio_rate30m
+          expr: |
+            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[30m]))
+            / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[30m]))
+        - record: banca:sli_errores:ratio_rate1h
+          expr: |
+            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[1h]))
+            / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[1h]))
+        - record: banca:sli_errores:ratio_rate6h
+          expr: |
+            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[6h]))
+            / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[6h]))
+        - record: banca:sli_errores:ratio_rate30d
+          expr: |
+            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[30d]))
+            / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[30d]))
+        - record: banca:sli_disponibilidad:ratio_rate30d
+          expr: 1 - banca:sli_errores:ratio_rate30d
+        # Fracción del presupuesto de error que aún queda (1 = intacto, 0 = agotado).
+        - record: banca:presupuesto_error:restante
+          expr: 1 - (banca:sli_errores:ratio_rate30d / 0.0001)
+        - record: banca:sli_latencia:ratio_rate5m
+          expr: |
+            sum(rate(traefik_service_request_duration_seconds_bucket{service=~"banca-prod-.*", le="0.3"}[5m]))
+            / sum(rate(traefik_service_request_duration_seconds_count{service=~"banca-prod-.*"}[5m]))
+        - record: banca:latencia_p95:5m
+          expr: |
+            histogram_quantile(0.95, sum by (le) (rate(traefik_service_request_duration_seconds_bucket{service=~"banca-prod-.*"}[5m])))
+
+    - name: banca-slo-alertas
+      rules:
+        - alert: BancaPresupuestoErrorConsumoRapido
+          expr: |
+            banca:sli_errores:ratio_rate1h > (14.4 * 0.0001)
+            and
+            banca:sli_errores:ratio_rate5m > (14.4 * 0.0001)
+          for: 1m
+          labels:
+            severity: critical
+            slo: disponibilidad-99.99
+          annotations:
+            summary: "BancaGT consume el presupuesto de error 14.4 veces más rápido de lo permitido"
+            description: "Tasa de error 5m = {{ $value | humanizePercentage }}. A este ritmo el presupuesto mensual (4.32 min) se agota en ~2 días."
+            runbook_url: https://devjean93.github.io/bancagt/runbook.html#alerta-consumo-rapido
+        - alert: BancaPresupuestoErrorConsumoSostenido
+          expr: |
+            banca:sli_errores:ratio_rate6h > (6 * 0.0001)
+            and
+            banca:sli_errores:ratio_rate30m > (6 * 0.0001)
+          for: 5m
+          labels:
+            severity: high
+            slo: disponibilidad-99.99
+          annotations:
+            summary: "BancaGT consume el presupuesto de error 6 veces más rápido de lo permitido"
+            runbook_url: https://devjean93.github.io/bancagt/runbook.html#alerta-consumo-sostenido
+        - alert: BancaLatenciaAlta
+          expr: banca:sli_latencia:ratio_rate5m < 0.99
+          for: 5m
+          labels:
+            severity: high
+            slo: latencia-300ms
+          annotations:
+            summary: "Menos del 99 % de las peticiones responde en 300 ms"
+            runbook_url: https://devjean93.github.io/bancagt/runbook.html#alerta-latencia
+        - alert: BancaRespaldoWALAtrasado
+          expr: |
+            time() - max(cnpg_pg_stat_archiver_last_archived_time{namespace="banca-prod"}) > 600
+          for: 5m
+          labels:
+            severity: high
+            slo: rpo-15min
+          annotations:
+            summary: "El último WAL archivado tiene más de 10 minutos: el RPO de 15 min está en riesgo"
+            runbook_url: https://devjean93.github.io/bancagt/runbook.html#alerta-wal
+        - alert: BancaCanaryAbortado
+          expr: |
+            max by (name) (rollout_info{namespace="banca-prod", phase="Degraded"}) == 1
+          for: 0m
+          labels:
+            severity: high
+          annotations:
+            summary: "El rollout {{ $labels.name }} fue abortado y revertido automáticamente"
+            runbook_url: https://devjean93.github.io/bancagt/runbook.html#alerta-canary

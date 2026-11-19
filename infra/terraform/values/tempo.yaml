@@ -1,0 +1,15 @@
+# Tempo recibe trazas OTLP directamente de los microservicios (SDK OpenTelemetry).
+tempo:
+  retention: 72h
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+  resources:
+    requests: { cpu: 20m, memory: 128Mi }
+persistence:
+  enabled: true
+  size: 2Gi

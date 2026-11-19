@@ -1,0 +1,31 @@
+# Dependencias
+node_modules/
+
+# Terraform: el estado contiene secretos generados (contraseñas, tokens)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.terraform.tfstate.lock.info
+infra/terraform/kubeconfig
+# kubeconfig que escribe el proveedor de kind (contiene la llave del clúster)
+infra/terraform/*-config
+
+# CA interna exportada por levantar.ps1
+bancagt-ca.crt
+
+# Secretos locales
+.env
+*.pem
+*.key
+!**/testdata/**
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Informe (borradores temporales de Word)
+~$*.docx

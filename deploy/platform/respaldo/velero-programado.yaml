@@ -1,0 +1,22 @@
+# Respaldo de los objetos de Kubernetes del namespace bancario cada 15 minutos.
+# Complementa a CNPG (que respalda los DATOS con WAL continuo): Velero guarda
+# la configuración (Secrets sincronizados, Services, Rollouts, políticas).
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: banca-prod-15min
+  namespace: velero
+spec:
+  schedule: "*/15 * * * *"
+  useOwnerReferencesInBackup: false
+  template:
+    ttl: 72h0m0s
+    includedNamespaces: [banca-prod]
+    # Los pods/ReplicaSets los recrean los controladores; la BD la restaura CNPG.
+    excludedResources:
+      - pods
+      - replicasets.apps
+      - events
+      - backups.postgresql.cnpg.io
+    snapshotVolumes: false
+    storageLocation: default
