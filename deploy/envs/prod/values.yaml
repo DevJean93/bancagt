@@ -27,8 +27,8 @@ servicios:
       FAULT_LATENCY_MS: "0"
 migraciones:
   imagen:
-    tag: "1.0.6-a7d3b54"
-    digest: "sha256:68226623fbfc732cd3bc39050ba9b450d456c477019e46bb2140213d3aa5221f"
+    tag: "1.0.7-7addd92"
+    digest: "sha256:90a7047e974c399ae12dc3ab4ab0a5c85d389b72bd0e0f5aa4624bff04fefe05"
 baseDatos:
   generacion: 2 # g1 se usó con el esquema SQL anterior; g2 nace con migraciones Prisma
   recuperarDe: ""
