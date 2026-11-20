@@ -19,8 +19,8 @@ servicios:
       FAULT_LATENCY_MS: "0"
   api-transferencias:
     imagen:
-      tag: "1.0.6-a7d3b54"
-      digest: "sha256:38ebbba0f8be5b2af6e047884646e8bef99dce8f5642ee2693090c909cbe21b4"
+      tag: "1.0.9-a288bf2"
+      digest: "sha256:aea2b33ae3967dcfbf07a6bce034099004e0a789750035319194495276971efd"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
