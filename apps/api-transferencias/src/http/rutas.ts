@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type {} from '@fastify/cookie';
-import { ErrorValidacion, requerirSesion, sesionDe, type Servidor, type VerificadorSesion, type ZodTypeProvider } from '@bancagt/plataforma';
+import { ErrorReglaNegocio, ErrorValidacion, requerirSesion, sesionDe, type Servidor, type VerificadorSesion, type ZodTypeProvider } from '@bancagt/plataforma';
 import { enmascararNumero, enmascararTitular, type Beneficiario, type Transferencia } from '../dominio/modelos.js';
 import type { RealizarTransferencia } from '../aplicacion/transferir.js';
 import type { ConsultarLimites, ConsultarTransferencias, GestionarBeneficiarios } from '../aplicacion/consultas.js';
@@ -76,8 +76,36 @@ export function registrarRutas(app: Servidor, d: Dependencias): void {
       const clave = req.headers['idempotency-key'];
       const valida = CLAVE_IDEMPOTENCIA.safeParse(clave);
       if (!valida.success) throw new ErrorValidacion('Encabezado Idempotency-Key requerido (8-64 caracteres)');
-      const r2 = await d.realizar.ejecutar(sesionDe(req), { ...req.body, idempotencyKey: valida.data });
-      return reply.code(r2.repetida ? 200 : 201).send({ ...aComprobante(r2.transferencia), repetida: r2.repetida });
+      const sesion = sesionDe(req);
+      // Bitácora de auditoría de cada intento (PCI-DSS 10.2): quién, qué, cuánto y
+      // resultado. Solo números enmascarados; nunca datos de autenticación.
+      const auditoria = {
+        evento: 'transferencia',
+        clienteId: sesion.clienteId,
+        tipoDestino: req.body.destino.tipo,
+        monto: req.body.monto,
+        idempotencyKey: valida.data,
+      };
+      try {
+        const r2 = await d.realizar.ejecutar(sesion, { ...req.body, idempotencyKey: valida.data });
+        const c = aComprobante(r2.transferencia);
+        req.log.info(
+          {
+            ...auditoria,
+            resultado: r2.repetida ? 'repetida' : 'completada',
+            referencia: c.referencia,
+            moneda: c.moneda,
+            origen: c.origen.numeroEnmascarado,
+            destino: c.destino.numeroEnmascarado,
+          },
+          `Transferencia ${c.referencia} ${r2.repetida ? 'repetida' : 'completada'}`,
+        );
+        return reply.code(r2.repetida ? 200 : 201).send({ ...c, repetida: r2.repetida });
+      } catch (err) {
+        const codigo = err instanceof ErrorReglaNegocio ? err.codigo : (err as { tipo?: string }).tipo ?? 'error';
+        req.log.warn({ ...auditoria, resultado: 'rechazada', codigo }, `Transferencia rechazada: ${codigo}`);
+        throw err;
+      }
     });
 
     r.get('/api/v1/transferencias', { schema: { querystring: paginacion } }, async (req) => {

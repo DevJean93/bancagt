@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dashboard-bancagt-transacciones
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  bancagt-transacciones.json: |
+    {
+      "uid": "bancagt-transacciones",
+      "title": "BancaGT · Transacciones",
+      "tags": ["bancagt", "negocio", "auditoria"],
+      "timezone": "browser",
+      "refresh": "30s",
+      "time": { "from": "now-6h", "to": "now" },
+      "schemaVersion": 39,
+      "panels": [
+        { "type": "stat", "title": "Transferencias completadas (24 h)", "gridPos": { "x": 0, "y": 0, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(increase(banca_operaciones_total{operacion=\"transferencia\", resultado=\"completada\"}[24h])) or vector(0)", "refId": "A" }],
+          "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "green" } } } },
+
+        { "type": "stat", "title": "Rechazadas por reglas de negocio (24 h)", "gridPos": { "x": 6, "y": 0, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(increase(banca_operaciones_total{operacion=\"transferencia\", resultado=~\"rechazada.*\"}[24h])) or vector(0)", "refId": "A" }],
+          "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "orange" } } } },
+
+        { "type": "stat", "title": "Reintentos idempotentes evitados (24 h)", "description": "Peticiones repetidas con la misma Idempotency-Key: no generaron un segundo cargo.", "gridPos": { "x": 12, "y": 0, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(increase(banca_operaciones_total{operacion=\"transferencia\", resultado=\"repetida\"}[24h])) or vector(0)", "refId": "A" }],
+          "fieldConfig": { "defaults": { "decimals": 0 } } },
+
+        { "type": "stat", "title": "Tasa de aprobación (1 h)", "gridPos": { "x": 18, "y": 0, "w": 6, "h": 5 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(increase(banca_operaciones_total{operacion=\"transferencia\", resultado=\"completada\"}[1h])) / sum(increase(banca_operaciones_total{operacion=\"transferencia\", resultado!=\"repetida\"}[1h]))", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1,
+            "thresholds": { "mode": "absolute", "steps": [ { "color": "orange", "value": null }, { "color": "green", "value": 0.9 } ] } } } },
+
+        { "type": "timeseries", "title": "Transferencias por minuto según resultado", "gridPos": { "x": 0, "y": 5, "w": 14, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (resultado) (rate(banca_operaciones_total{operacion=\"transferencia\"}[5m])) * 60", "legendFormat": "{{resultado}}", "refId": "A" }],
+          "fieldConfig": { "defaults": { "unit": "short", "custom": { "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal" } } } } },
+
+        { "type": "bargauge", "title": "Motivos de rechazo (6 h)", "gridPos": { "x": 14, "y": 5, "w": 10, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sort_desc(sum by (resultado) (increase(banca_operaciones_total{operacion=\"transferencia\", resultado=~\"rechazada.*\"}[6h])))", "legendFormat": "{{resultado}}", "refId": "A", "instant": true }],
+          "options": { "orientation": "horizontal", "displayMode": "basic" },
+          "fieldConfig": { "defaults": { "decimals": 0, "color": { "mode": "fixed", "fixedColor": "orange" } } } },
+
+        { "type": "logs", "title": "Bitácora de auditoría de transferencias (Loki)", "description": "Un registro por intento: referencia, resultado, monto, cuentas enmascaradas y motivo de rechazo.", "gridPos": { "x": 0, "y": 13, "w": 24, "h": 12 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{ "expr": "{namespace=\"banca-prod\", container=\"api-transferencias\"} | json | evento=\"transferencia\" | line_format \"{{.resultado | upper}}  {{.referencia}}  {{.monto}} {{.moneda}}  {{.origen}} → {{.destino}}  {{.tipoDestino}}  {{.codigo}}\"", "refId": "A" }],
+          "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true } }
+      ]
+    }
