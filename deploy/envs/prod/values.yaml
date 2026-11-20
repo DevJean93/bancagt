@@ -3,34 +3,32 @@
 servicios:
   web-banca:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.6-a7d3b54"
+      digest: "sha256:013c0976b81ba1c78d5ce6aef7de6822b4bcbdba840d7d30d5b34da960c582d0"
   api-identidad:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.6-a7d3b54"
+      digest: "sha256:d847ee207ff2ebbe90bb7a31857df8a8190962f7ea112cb787af9a237a92b5c4"
   api-cuentas:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.6-a7d3b54"
+      digest: "sha256:89c940611a2950416e8fbfd69e5d32f10ef882c83c763e8b26552bcadf4ad157"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
   api-transferencias:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.6-a7d3b54"
+      digest: "sha256:38ebbba0f8be5b2af6e047884646e8bef99dce8f5642ee2693090c909cbe21b4"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
-
 migraciones:
   imagen:
-    tag: ""
-    digest: ""
-
+    tag: "1.0.6-a7d3b54"
+    digest: "sha256:68226623fbfc732cd3bc39050ba9b450d456c477019e46bb2140213d3aa5221f"
 baseDatos:
   generacion: 2 # g1 se usó con el esquema SQL anterior; g2 nace con migraciones Prisma
   recuperarDe: ""
