@@ -163,8 +163,18 @@ resource "docker_container" "s3" {
   }
 
   ports {
-    internal = 8333
+    internal = 8333 # API S3
     external = 8333
+    ip       = "127.0.0.1"
+  }
+  ports {
+    internal = 8888 # consola web del filer (navegar buckets)
+    external = 8888
+    ip       = "127.0.0.1"
+  }
+  ports {
+    internal = 9333 # consola del master (estado del almacenamiento)
+    external = 9333
     ip       = "127.0.0.1"
   }
 
@@ -190,8 +200,14 @@ resource "docker_container" "s3" {
     executable = true
     content    = <<-EOT
       #!/bin/sh
+      # Idempotente: solo crea los buckets que falten (se conservan los respaldos).
       for i in $(seq 1 40); do
-        if printf 's3.bucket.create -name velero\ns3.bucket.create -name cnpg\n' | weed shell >/dev/null 2>&1; then
+        lista=$(echo 's3.bucket.list' | weed shell 2>/dev/null) || { sleep 3; continue; }
+        for b in velero cnpg; do
+          echo "$lista" | grep -q "^ *$b[[:space:]]" || echo "s3.bucket.create -name $b" | weed shell >/dev/null 2>&1
+        done
+        lista=$(echo 's3.bucket.list' | weed shell 2>/dev/null)
+        if echo "$lista" | grep -q "^ *velero[[:space:]]" && echo "$lista" | grep -q "^ *cnpg[[:space:]]"; then
           echo "buckets listos"; exit 0
         fi
         sleep 3

@@ -72,7 +72,9 @@ metadata:
   name: {{ $nombre }}
   labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
 spec:
-  replicas: {{ $svc.replicas }}
+  # Sin imagen publicada (tag vacío) no se crean pods: evita que una revisión
+  # sin imagen quede registrada como "estable" en Argo Rollouts.
+  replicas: {{ if $svc.imagen.tag }}{{ $svc.replicas }}{{ else }}0{{ end }}
   revisionHistoryLimit: 3
   selector:
     matchLabels:
