@@ -84,7 +84,7 @@ spec:
       containers:
         - name: k6
           image: grafana/k6:2.4.0
-          args: ["run", "--quiet", "--no-summary", "/scripts/sondeo.js"]
+          args: ["run", "--quiet", "/scripts/sondeo.js"]
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
