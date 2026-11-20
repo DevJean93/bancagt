@@ -1,5 +1,10 @@
-# Dependencias
+# Dependencias y artefactos de compilación
 node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+# Cliente Prisma: se genera en la CI y en el Dockerfile a partir del esquema
+**/src/generated/
 
 # Terraform: el estado contiene secretos generados (contraseñas, tokens)
 .terraform/
@@ -29,3 +34,4 @@ Thumbs.db
 
 # Informe (borradores temporales de Word)
 ~$*.docx
+banca-db-ca.crt

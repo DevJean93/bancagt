@@ -1,0 +1,21 @@
+{
+  "name": "@bancagt/db-migraciones",
+  "version": "1.0.0",
+  "private": true,
+  "description": "BancaGT - Job de migraciones (Prisma migrate deploy) y datos semilla",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "node dist/main.js",
+    "dev": "node --conditions=source --import tsx src/main.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@bancagt/db-core": "1.0.0",
+    "@bancagt/db-identidad": "1.0.0",
+    "@bancagt/plataforma": "1.0.0",
+    "@node-rs/argon2": "2.2.2",
+    "prisma": "7.10.1",
+    "zod": "4.6.7"
+  }
+}

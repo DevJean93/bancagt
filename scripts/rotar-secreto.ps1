@@ -43,12 +43,13 @@ Registrar "Roles administrados por CNPG: $estadoRol"
 
 Paso '5. Verificar el servicio (las conexiones nuevas usan la contraseña nueva)'
 $errores = 0
+$sesion = Iniciar-SesionApi
+$gtq = @((Api $sesion '/api/v1/cuentas').cuentas | Where-Object moneda -eq 'GTQ')
 for ($i = 0; $i -lt 30; $i++) {
     try {
-        $id = [guid]::NewGuid().ToString()
-        $b = @{ origen = '1001'; destino = '1003'; monto = 1 } | ConvertTo-Json
-        Invoke-RestMethod "$Url/api/v1/transferencias" -Method Post -Body $b -ContentType 'application/json' -Headers @{ 'Idempotency-Key' = $id } -SkipCertificateCheck | Out-Null
-        Invoke-RestMethod "$Url/api/v1/cuentas/1001/saldo" -SkipCertificateCheck | Out-Null
+        $cuerpo = @{ cuentaOrigenId = $gtq[$i % 2].id; destino = @{ tipo = 'PROPIA'; cuentaId = $gtq[($i + 1) % 2].id }; monto = '1.00'; concepto = 'Verificación de rotación' }
+        Api $sesion '/api/v1/transferencias' 'POST' $cuerpo @{ 'Idempotency-Key' = [guid]::NewGuid().ToString() } | Out-Null
+        Api $sesion '/api/v1/cuentas' | Out-Null
     } catch { $errores++ }
     Start-Sleep 1
 }

@@ -27,16 +27,6 @@ spec:
     data:
       compression: gzip
 ---
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: banca-db-esquema
-  annotations:
-    argocd.argoproj.io/sync-wave: "-1"
-data:
-  esquema.sql: |
-{{ .Files.Get "files/esquema.sql" | indent 4 }}
----
 apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
@@ -97,15 +87,13 @@ spec:
         targetTime: {{ $db.recuperarHasta | quote }}
       {{- end }}
     {{- else }}
+    # Solo crea la base y el rol: el esquema lo aplican las migraciones de
+    # Prisma (Job db-migraciones), versionadas en Git.
     initdb:
       database: banca
       owner: banca
       secret:
         name: banca-db-app
-      postInitApplicationSQLRefs:
-        configMapRefs:
-          - name: banca-db-esquema
-            key: esquema.sql
     {{- end }}
   {{- if $db.recuperarDe }}
   externalClusters:

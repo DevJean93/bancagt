@@ -30,8 +30,24 @@ function Evidencia([string]$nombre, [scriptblock]$bloque) {
     Write-Host "    Evidencia guardada en evidencias\$nombre.txt" -ForegroundColor DarkGray
 }
 
-# Consulta SQL de solo lectura en la instancia primaria (socket local, rol postgres).
-function Sql([string]$consulta) {
-    $primaria = k -n banca-prod get cluster banca-db -o jsonpath='{.status.currentPrimary}'
-    k -n banca-prod exec $primaria -c postgres -- psql -d banca -tAc $consulta
+# ---- Cliente de la API del banco (misma ruta que un usuario: HTTPS por Traefik) ----
+$script:Origen = @{ Origin = $script:Url }
+
+function Iniciar-SesionApi([string]$usuario = 'sonda', [string]$contrasena = 'BancaGT#2026') {
+    $cuerpo = @{ usuario = $usuario; contrasena = $contrasena } | ConvertTo-Json
+    Invoke-RestMethod "$script:Url/api/v1/auth/sesion" -Method Post -Body $cuerpo -ContentType 'application/json' `
+        -Headers $script:Origen -SessionVariable sesion -SkipCertificateCheck -TimeoutSec 10 | Out-Null
+    return $sesion
+}
+
+function Api([Microsoft.PowerShell.Commands.WebRequestSession]$sesion, [string]$ruta, [string]$metodo = 'GET', $cuerpo = $null, [hashtable]$extra = @{}) {
+    $p = @{ Uri = "$script:Url$ruta"; Method = $metodo; WebSession = $sesion; SkipCertificateCheck = $true; TimeoutSec = 10; Headers = ($script:Origen + $extra) }
+    if ($null -ne $cuerpo) { $p.Body = ($cuerpo | ConvertTo-Json -Depth 5); $p.ContentType = 'application/json' }
+    Invoke-RestMethod @p
+}
+
+# Última transferencia registrada para el usuario de monitoreo (lo usa el DRP para medir el RPO).
+function Estado-Transferencias([Microsoft.PowerShell.Commands.WebRequestSession]$sesion) {
+    $r = Api $sesion '/api/v1/transferencias?pagina=1&tamano=5'
+    [pscustomobject]@{ total = [int]$r.total; ultima = if ($r.elementos.Count) { [datetime]$r.elementos[0].fecha } else { $null }; referencia = $r.elementos[0].referencia }
 }

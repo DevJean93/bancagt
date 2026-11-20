@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/src/generated
+**/*.tsbuildinfo
+.git
+.github
+infra
+deploy
+docs
+evidencias
+scripts
+tests
+informe
+*.md
+*.crt
+docker

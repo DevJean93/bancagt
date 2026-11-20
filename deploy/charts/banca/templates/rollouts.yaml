@@ -71,6 +71,9 @@ kind: Rollout
 metadata:
   name: {{ $nombre }}
   labels: {{- include "banca.etiquetas" $ctx | nindent 4 }}
+  annotations:
+    # Después de la base de datos y de las migraciones.
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   # Sin imagen publicada (tag vacío) no se crean pods: evita que una revisión
   # sin imagen quede registrada como "estable" en Argo Rollouts.
@@ -132,10 +135,20 @@ spec:
               value: /etc/banca/db/password
             - name: DB_SSL_CA
               value: /etc/banca/db-ca/ca.crt
+            - name: ORIGEN_PERMITIDO
+              value: https://banca.{{ $.Values.dominio }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: http://tempo.observabilidad.svc:4318
             - name: OTEL_SERVICE_NAME
               value: {{ $nombre }}
+            {{- end }}
+            {{- if $svc.jwt }}
+            - name: JWT_LLAVE_PUBLICA_ARCHIVO
+              value: /etc/banca/jwt/publica.pem
+            {{- end }}
+            {{- if eq $svc.jwt "privada" }}
+            - name: JWT_LLAVE_PRIVADA_ARCHIVO
+              value: /etc/banca/jwt-privada/privada.pem
             {{- end }}
           securityContext:
             allowPrivilegeEscalation: false
@@ -171,6 +184,16 @@ spec:
               mountPath: /etc/banca/db-ca
               readOnly: true
             {{- end }}
+            {{- if $svc.jwt }}
+            - name: jwt-publica
+              mountPath: /etc/banca/jwt
+              readOnly: true
+            {{- end }}
+            {{- if eq $svc.jwt "privada" }}
+            - name: jwt-privada
+              mountPath: /etc/banca/jwt-privada
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
@@ -188,6 +211,18 @@ spec:
             secretName: banca-db-ca
             items:
               - { key: ca.crt, path: ca.crt }
+        {{- end }}
+        {{- if $svc.jwt }}
+        - name: jwt-publica
+          secret:
+            secretName: banca-jwt-publica
+        {{- end }}
+        {{- if eq $svc.jwt "privada" }}
+        # La llave privada SOLO se monta en api-identidad (único emisor de tokens).
+        - name: jwt-privada
+          secret:
+            secretName: banca-jwt-privada
+            defaultMode: 0400
         {{- end }}
   strategy:
     canary:

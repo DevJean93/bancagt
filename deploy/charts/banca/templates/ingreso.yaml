@@ -43,9 +43,10 @@ spec:
   entryPoints: [websecure]
   routes:
     {{- range $nombre, $svc := .Values.servicios }}
-    {{- if ne $svc.ruta "/" }}
+    {{- range $ruta := $svc.rutas }}
+    {{- if ne $ruta "/" }}
     - kind: Rule
-      match: Host(`banca.{{ $.Values.dominio }}`) && PathPrefix(`{{ $svc.ruta }}`)
+      match: Host(`banca.{{ $.Values.dominio }}`) && PathPrefix(`{{ $ruta }}`)
       middlewares:
         - name: limite-peticiones
         - name: limite-cuerpo
@@ -54,8 +55,9 @@ spec:
           name: {{ $nombre }}-ponderado
     {{- end }}
     {{- end }}
+    {{- end }}
     {{- range $nombre, $svc := .Values.servicios }}
-    {{- if eq $svc.ruta "/" }}
+    {{- if has "/" $svc.rutas }}
     - kind: Rule
       match: Host(`banca.{{ $.Values.dominio }}`)
       priority: 1

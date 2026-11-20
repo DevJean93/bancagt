@@ -1,6 +1,7 @@
-# Monitoreo sintético: un cliente k6 recorre el flujo del portal 24/7 entrando
-# por el Ingress (HTTPS) igual que un usuario. Garantiza que siempre haya datos
-# para los SLI y para el análisis del canary, aun sin usuarios reales.
+# Monitoreo sintético: un cliente k6 recorre el flujo real del portal 24/7
+# entrando por el Ingress (HTTPS) igual que un usuario: inicia sesión, consulta
+# cuentas y movimientos, y transfiere entre sus propias cuentas. Garantiza que
+# siempre haya datos para los SLI y para el análisis del canary.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -19,6 +20,7 @@ data:
     import { check } from 'k6';
 
     const BASE = 'https://banca.127.0.0.1.nip.io';
+    const CABECERAS = { 'Content-Type': 'application/json', Origin: BASE };
 
     export const options = {
       insecureSkipTLSVerify: true, // CA interna del laboratorio
@@ -34,26 +36,43 @@ data:
       },
     };
 
-    const cuentas = ['1001', '1002', '1003'];
+    // Estado por VU: sesión (cookie en el jar de k6) y cuentas del usuario "sonda".
+    let sesionHasta = 0;
+    let cuentas = [];
+    let sentido = false;
+
+    function asegurarSesion() {
+      if (Date.now() < sesionHasta - 60_000 && cuentas.length) return true;
+      const r = http.post(`${BASE}/api/v1/auth/sesion`, JSON.stringify({ usuario: 'sonda', contrasena: 'BancaGT#2026' }), {
+        headers: CABECERAS, tags: { flujo: 'login' },
+      });
+      if (!check(r, { 'login 200': (x) => x.status === 200 })) return false;
+      sesionHasta = Date.parse(r.json('expiraEn'));
+      const c = http.get(`${BASE}/api/v1/cuentas`, { tags: { flujo: 'cuentas' } });
+      cuentas = c.status === 200 ? c.json('cuentas').filter((x) => x.moneda === 'GTQ') : [];
+      return cuentas.length > 0;
+    }
 
     export default function () {
+      if (!asegurarSesion()) return;
       const n = Math.floor(Math.random() * 100);
-      if (n < 10) {
-        // 10 %: transferencia pequeña de ida y vuelta (saldo neto constante).
-        const ida = n % 2 === 0;
+      if (n < 8 && cuentas.length >= 2) {
+        // Transferencia de Q1 entre cuentas propias, alternando el sentido (saldo neto constante).
+        sentido = !sentido;
+        const [a, b] = sentido ? [cuentas[0], cuentas[1]] : [cuentas[1], cuentas[0]];
         const r = http.post(
           `${BASE}/api/v1/transferencias`,
-          JSON.stringify({ origen: ida ? '1001' : '1003', destino: ida ? '1003' : '1001', monto: 1 }),
-          { headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `sondeo-${__VU}-${__ITER}-${Date.now()}` }, tags: { flujo: 'transferencia' } },
+          JSON.stringify({ cuentaOrigenId: a.id, destino: { tipo: 'PROPIA', cuentaId: b.id }, monto: '1.00', concepto: 'Monitoreo sintético' }),
+          { headers: { ...CABECERAS, 'Idempotency-Key': `sondeo-${__VU}-${__ITER}-${Date.now()}` }, tags: { flujo: 'transferencia' } },
         );
-        check(r, { 'transferencia 2xx': (x) => x.status === 201 || x.status === 200 });
+        check(r, { 'transferencia 2xx o regla de negocio': (x) => x.status === 201 || x.status === 422 });
       } else if (n < 20) {
-        const r = http.get(`${BASE}/`, { tags: { flujo: 'portal' } });
-        check(r, { 'portal 200': (x) => x.status === 200 });
-      } else {
+        check(http.get(`${BASE}/`, { tags: { flujo: 'portal' } }), { 'portal 200': (x) => x.status === 200 });
+      } else if (n < 45) {
         const c = cuentas[n % cuentas.length];
-        const r = http.get(`${BASE}/api/v1/cuentas/${c}/saldo`, { tags: { flujo: 'saldo' } });
-        check(r, { 'saldo 200': (x) => x.status === 200 });
+        check(http.get(`${BASE}/api/v1/cuentas/${c.id}/movimientos?tamano=10`, { tags: { flujo: 'movimientos' } }), { 'movimientos 200': (x) => x.status === 200 });
+      } else {
+        check(http.get(`${BASE}/api/v1/cuentas`, { tags: { flujo: 'saldo' } }), { 'saldo 200': (x) => x.status === 200 });
       }
     }
 ---
@@ -73,6 +92,9 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: k6-sondeo
+      annotations:
+        # Reinicia el pod cuando cambia el script.
+        bancagt/version-script: "2"
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -85,6 +107,9 @@ spec:
         - name: k6
           image: grafana/k6:2.4.0
           args: ["run", "--quiet", "/scripts/sondeo.js"]
+          env:
+            - name: K6_NO_USAGE_REPORT
+              value: "true"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

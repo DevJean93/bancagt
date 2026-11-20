@@ -15,6 +15,13 @@ resource "random_password" "db_app" {
   special = false
 }
 
+# Par de llaves ECDSA P-256 para firmar sesiones (JWT ES256). Se siembra en
+# Vault; la privada solo llega a api-identidad.
+resource "tls_private_key" "jwt" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
 resource "helm_release" "vault" {
   depends_on       = [terraform_data.nodos_listos]
   name             = "vault"
@@ -40,6 +47,8 @@ resource "kubernetes_secret_v1" "vault_semilla" {
     VAULT_TOKEN      = random_password.vault_root.result
     SEED_DB_PASSWORD = random_password.db_app.result
     SEED_S3_SECRET   = random_password.s3_secret.result
+    SEED_JWT_PRIVADA = tls_private_key.jwt.private_key_pem_pkcs8
+    SEED_JWT_PUBLICA = tls_private_key.jwt.public_key_pem
   }
 }
 

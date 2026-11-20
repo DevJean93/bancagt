@@ -5,7 +5,8 @@
   Escenario: se pierde por completo el namespace banca-prod (aplicación + base
   de datos + volúmenes). La recuperación se hace por GitOps:
 
-    1. Se registra el estado previo (transferencias y la más reciente).
+    1. Se registra el estado previo vía API (transferencias del monitoreo
+       sintético, que genera ~0.4 transferencias por segundo).
     2. DESASTRE: kubectl delete namespace banca-prod.           → T0
     3. El script declara en Git la recuperación: nueva generación de BD que
        nace desde el respaldo S3 (base backup + WAL). El usuario hace commit
@@ -28,9 +29,9 @@ $log = [System.Collections.Generic.List[string]]::new()
 function Registrar([string]$t) { $l = "$(Get-Date -Format 'HH:mm:ss') $t"; $log.Add($l); Write-Host "    $l" }
 
 Paso '1. Estado previo al desastre'
-$previo = (Sql "select count(*) || '|' || coalesce(to_char(max(creado_en) at time zone 'UTC','YYYY-MM-DD HH24:MI:SS'),'-') from transferencias").Trim()
+$previo = Estado-Transferencias (Iniciar-SesionApi)
 $wal = k -n banca-prod get cluster banca-db -o jsonpath='{.status.conditions[?(@.type=="ContinuousArchiving")].status}'
-Registrar "Transferencias|última (UTC): $previo"
+Registrar "Transferencias de la sonda: $($previo.total) · última $($previo.referencia) a las $($previo.ultima.ToUniversalTime().ToString('HH:mm:ss')) UTC"
 Registrar "Archivado continuo de WAL activo: $wal"
 Registrar "Generación de BD actual: banca-db-g$genActual"
 if (-not $SinConfirmar) {
@@ -84,26 +85,27 @@ foreach ($s in 'api-cuentas', 'api-transferencias', 'web-banca') {
 }
 
 Paso '5. Verificación del servicio por HTTPS'
-for ($i = 0; $i -lt 60; $i++) {
+$sesion = $null
+for ($i = 0; $i -lt 120; $i++) {
     try {
-        $resp = Invoke-RestMethod "$Url/api/v1/cuentas/1001/saldo" -SkipCertificateCheck -TimeoutSec 5
-        if ($resp.cuenta -eq '1001') { break }
+        $sesion = Iniciar-SesionApi
+        $resp = Api $sesion '/api/v1/cuentas'
+        if ($resp.cuentas.Count -gt 0) { break }
     } catch { Start-Sleep 5 }
 }
 $T1 = Get-Date
-Registrar "T1 - servicio respondiendo: saldo 1001 = $($resp.saldo) $($resp.moneda)"
+Registrar "T1 - servicio respondiendo por HTTPS: login + $($resp.cuentas.Count) cuentas consultadas"
 
 Paso '6. Resultado'
-$despues = (Sql "select count(*) || '|' || coalesce(to_char(max(creado_en) at time zone 'UTC','YYYY-MM-DD HH24:MI:SS'),'-') from transferencias").Trim()
+# Las transferencias que la sonda haga DESPUÉS de la recuperación no cuentan.
+$recuperadas = Api $sesion '/api/v1/transferencias?pagina=1&tamano=50'
+$antesDelDesastre = @($recuperadas.elementos | Where-Object { [datetime]$_.fecha -le $previo.ultima })
+$ultimaRecuperada = if ($antesDelDesastre.Count) { [datetime]$antesDelDesastre[0].fecha } else { $null }
 $rto = ($T1 - $T0).TotalMinutes
-$a = $previo.Split('|'); $b = $despues.Split('|')
-$perdidas = [int]$a[0] - [int]$b[0]
-$rpoMin = 0
-if ($a[1] -ne '-' -and $b[1] -ne '-') {
-    $rpoMin = ([datetime]::Parse($a[1]) - [datetime]::Parse($b[1])).TotalMinutes
-}
-Registrar "Antes:   $previo"
-Registrar "Después: $despues"
+$rpoMin = if ($ultimaRecuperada) { ($previo.ultima - $ultimaRecuperada).TotalMinutes } else { [double]::NaN }
+$perdidas = $previo.total - ($recuperadas.total - @($recuperadas.elementos | Where-Object { [datetime]$_.fecha -gt $previo.ultima }).Count)
+Registrar "Antes del desastre:   última transferencia $($previo.referencia) ($($previo.ultima.ToUniversalTime().ToString('HH:mm:ss')) UTC)"
+Registrar "Última recuperada:    $(if ($ultimaRecuperada) { $antesDelDesastre[0].referencia + ' (' + $ultimaRecuperada.ToUniversalTime().ToString('HH:mm:ss') + ' UTC)' } else { 'ninguna' })"
 Registrar ("RTO medido: {0:N1} min (meta ≤ 30 min) → {1}" -f $rto, $(if ($rto -le 30) { 'CUMPLE' } else { 'NO CUMPLE' }))
 Registrar ("RPO medido: {0:N1} min de datos ({1} transferencias no recuperadas) (meta ≤ 15 min) → {2}" -f $rpoMin, $perdidas, $(if ($rpoMin -le 15) { 'CUMPLE' } else { 'NO CUMPLE' }))
 

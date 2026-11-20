@@ -4,46 +4,75 @@
 dominio: 127.0.0.1.nip.io
 registro: ghcr.io/devjean93/bancagt
 
+# Plantilla común de los microservicios.
+# - rutas: prefijos que Traefik envía al servicio ("/" = portal web).
+# - db: monta credenciales y CA de PostgreSQL.
+# - jwt: "privada" (solo identidad firma) | "publica" (verifica) | "" (no usa).
 servicios:
   web-banca:
     imagen: { tag: "", digest: "" }
-    ruta: /
+    rutas: ["/"]
     replicas: 2
     uid: 101
     db: false
+    jwt: ""
     metricas: false
     env: {}
     recursos:
       requests: { cpu: 10m, memory: 16Mi }
       limits: { memory: 64Mi }
+  api-identidad:
+    imagen: { tag: "", digest: "" }
+    rutas: ["/api/v1/auth"]
+    replicas: 2
+    uid: 65532
+    db: true
+    jwt: privada
+    metricas: true
+    env:
+      LOG_LEVEL: info
+      SESION_MINUTOS: "15"
+      FAULT_RATE: "0"
+      FAULT_LATENCY_MS: "0"
+    recursos:
+      # Argon2id usa ~19 MiB por verificación: se reserva memoria extra.
+      requests: { cpu: 50m, memory: 128Mi }
+      limits: { memory: 320Mi }
   api-cuentas:
     imagen: { tag: "", digest: "" }
-    ruta: /api/v1/cuentas
+    rutas: ["/api/v1/cuentas"]
     replicas: 2
     uid: 65532
     db: true
+    jwt: publica
     metricas: true
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
     recursos:
-      requests: { cpu: 25m, memory: 64Mi }
-      limits: { memory: 192Mi }
+      requests: { cpu: 25m, memory: 96Mi }
+      limits: { memory: 256Mi }
   api-transferencias:
     imagen: { tag: "", digest: "" }
-    ruta: /api/v1/transferencias
+    rutas: ["/api/v1/transferencias", "/api/v1/beneficiarios"]
     replicas: 2
     uid: 65532
     db: true
+    jwt: publica
     metricas: true
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
     recursos:
-      requests: { cpu: 25m, memory: 64Mi }
-      limits: { memory: 192Mi }
+      requests: { cpu: 25m, memory: 96Mi }
+      limits: { memory: 256Mi }
+
+# Job de base de datos: prisma migrate deploy + datos semilla (hook de Argo CD).
+migraciones:
+  imagen: { tag: "", digest: "" }
+  sembrar: "si"
 
 # Despliegue progresivo (Argo Rollouts + Traefik).
 canary:

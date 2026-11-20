@@ -1,0 +1,105 @@
+@import 'tailwindcss';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-sans/700.css';
+
+/*
+ * Sistema de diseño BancaGT (generado con la skill UI/UX Pro Max):
+ *   Estilo: Minimalism & Swiss  ·  Patrón: Trust & Authority  ·  Tipografía: IBM Plex Sans
+ *   Paleta: familia "Trust teal" (petróleo + teal) con acento terracota.
+ *   Identidad propia: se evita deliberadamente el azul marino + dorado y otras
+ *   combinaciones asociadas a bancos guatemaltecos existentes.
+ * Los componentes usan SOLO tokens semánticos (nunca hex directos).
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+
+  --color-primario: #0b3b3c;
+  --color-sobre-primario: #ffffff;
+  --color-secundario: #0f766e;
+  --color-secundario-suave: #d5f5ef;
+  --color-acento: #c2410c;
+  --color-acento-suave: #ffedd5;
+  --color-acento-claro: #fb923c; /* terracota claro sobre fondos oscuros */
+  --color-fondo: #f6f9f8;
+  --color-texto: #0c1615;
+  --color-tarjeta: #ffffff;
+  --color-apagado: #e7eeec;
+  --color-texto-apagado: #4b5a58;
+  --color-borde: #dde6e4;
+  --color-anillo: #0f766e;
+  --color-peligro: #dc2626;
+  --color-peligro-suave: #fef2f2;
+  --color-exito: #15803d;
+  --color-exito-suave: #f0fdf4;
+  --color-aviso: #b45309;
+  --color-aviso-suave: #fffbeb;
+
+  --radius-tarjeta: 0.75rem;
+  --shadow-tarjeta: 0 1px 2px rgb(11 59 60 / 0.06), 0 1px 3px rgb(11 59 60 / 0.04);
+  --ease-suave: cubic-bezier(0.2, 0, 0, 1);
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    line-height: 1.5;
+  }
+  /* Foco visible SIEMPRE para teclado (WCAG 2.4.7). */
+  :focus-visible {
+    outline: 2px solid var(--color-anillo);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  button:not(:disabled),
+  [role='button'],
+  a[href],
+  select,
+  summary {
+    cursor: pointer;
+  }
+  /* Cifras alineadas en tablas y montos. */
+  .cifras {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Movimiento sutil (150-250 ms) y respeto a usuarios sensibles al movimiento. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.aparecer {
+  animation: aparecer 220ms var(--ease-suave) both;
+}
+
+/* Comprobantes y estados de cuenta imprimibles. */
+@media print {
+  .no-imprimir {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .imprimible {
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+  }
+}

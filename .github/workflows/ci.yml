@@ -30,16 +30,57 @@ jobs:
     name: Detectar servicios modificados
     runs-on: ubuntu-latest
     outputs:
-      servicios: ${{ steps.filtro.outputs.changes }}
+      # "comun" no es una imagen: se excluye de la matriz.
+      servicios: ${{ steps.lista.outputs.servicios }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: filtro
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
+          # Un cambio en un paquete compartido o en el lockfile reconstruye a sus consumidores.
           filters: |
-            api-cuentas: ['apps/api-cuentas/**']
-            api-transferencias: ['apps/api-transferencias/**']
-            web-banca: ['apps/web-banca/**']
+            comun: &comun ['packages/plataforma/**', 'package-lock.json', 'docker/servicio-node.Dockerfile']
+            api-identidad: [*comun, 'apps/api-identidad/**', 'packages/db-identidad/**']
+            api-cuentas: [*comun, 'apps/api-cuentas/**', 'packages/db-core/**']
+            api-transferencias: [*comun, 'apps/api-transferencias/**', 'packages/db-core/**']
+            db-migraciones: [*comun, 'apps/db-migraciones/**', 'packages/db-core/**', 'packages/db-identidad/**']
+            web-banca: ['apps/web-banca/**', 'docker/web.Dockerfile', 'package-lock.json']
+      - id: lista
+        env:
+          CAMBIOS: ${{ steps.filtro.outputs.changes }}
+        run: echo "servicios=$(echo "$CAMBIOS" | jq -c 'map(select(. != "comun"))')" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------
+  pruebas:
+    name: Pruebas, tipos y SCA (monorepo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Instalar dependencias (lockfile, sin scripts de instalación)
+        run: npm ci --ignore-scripts
+      - name: Generar clientes Prisma (ORM)
+        run: |
+          npx prisma generate --schema packages/db-core/prisma/schema.prisma
+          npx prisma generate --schema packages/db-identidad/prisma/schema.prisma
+      - name: Verificación de tipos (backend y frontend)
+        run: npx tsc -b && npx tsc -p apps/web-banca/tsconfig.json
+      - name: Pruebas unitarias (Vitest) con cobertura
+        run: npx vitest run --coverage.enabled --coverage.reporter=text --coverage.reporter=json-summary
+      - name: SCA - npm audit (falla con HIGH o CRITICAL en producción)
+        run: npm audit --omit=dev --audit-level=high
+      - name: SCA - Trivy filesystem (lockfile)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          exit-code: '1'
 
   # ---------------------------------------------------------------
   secretos:
@@ -68,7 +109,7 @@ jobs:
         run: |
           semgrep scan --config p/owasp-top-ten --config p/nodejs --config p/javascript \
             --config p/secrets --config p/dockerfile --config p/kubernetes \
-            --sarif --output semgrep.sarif --error --severity ERROR apps/ deploy/
+            --sarif --output semgrep.sarif --error --severity ERROR \n            --exclude '**/generated/**' apps/ packages/ deploy/
       - name: Publicar hallazgos en la pestaña Security
         if: always()
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
@@ -135,7 +176,7 @@ jobs:
   # ---------------------------------------------------------------
   servicio:
     name: ${{ matrix.servicio }}
-    needs: [cambios, secretos, sast]
+    needs: [cambios, pruebas, secretos, sast]
     if: needs.cambios.outputs.servicios != '[]'
     runs-on: ubuntu-latest
     permissions:
@@ -147,11 +188,9 @@ jobs:
       fail-fast: false
       matrix:
         servicio: ${{ fromJSON(needs.cambios.outputs.servicios) }}
-    defaults:
-      run:
-        working-directory: apps/${{ matrix.servicio }}
     env:
       IMAGEN: ghcr.io/devjean93/bancagt/${{ matrix.servicio }}
+      DOCKERFILE: ${{ matrix.servicio == 'web-banca' && 'docker/web.Dockerfile' || 'docker/servicio-node.Dockerfile' }}
       PUBLICAR: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     outputs:
       digest: ${{ steps.build.outputs.digest }}
@@ -162,36 +201,16 @@ jobs:
         id: ver
         run: echo "tag=1.0.${{ github.run_number }}-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
-      # --- Pruebas unitarias y SCA (solo servicios Node) ---
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: matrix.servicio != 'web-banca'
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: apps/${{ matrix.servicio }}/package-lock.json
-      - name: Pruebas unitarias
-        if: matrix.servicio != 'web-banca'
-        run: npm ci --ignore-scripts && npm test
-      - name: SCA - npm audit (falla con HIGH o CRITICAL)
-        if: matrix.servicio != 'web-banca'
-        run: npm audit --omit=dev --audit-level=high
-      - name: SCA - Trivy filesystem (dependencias)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          version: v0.76.2
-          scan-type: fs
-          scan-ref: apps/${{ matrix.servicio }}
-          scanners: vuln
-          severity: CRITICAL,HIGH
-          exit-code: '1'
-
       # --- Build multi-stage ---
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build (sin push) para escanear
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/${{ matrix.servicio }}
-          build-args: APP_VERSION=${{ steps.ver.outputs.tag }}
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          build-args: |
+            SERVICIO=${{ matrix.servicio }}
+            APP_VERSION=${{ steps.ver.outputs.tag }}
           tags: ${{ env.IMAGEN }}:${{ steps.ver.outputs.tag }}
           load: true
           cache-from: type=gha,scope=${{ matrix.servicio }}
@@ -238,8 +257,11 @@ jobs:
         if: env.PUBLICAR == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          context: apps/${{ matrix.servicio }}
-          build-args: APP_VERSION=${{ steps.ver.outputs.tag }}
+          context: .
+          file: ${{ env.DOCKERFILE }}
+          build-args: |
+            SERVICIO=${{ matrix.servicio }}
+            APP_VERSION=${{ steps.ver.outputs.tag }}
           tags: ${{ env.IMAGEN }}:${{ steps.ver.outputs.tag }}
           push: true
           provenance: mode=max
@@ -303,7 +325,9 @@ jobs:
           for f in salida/*.json; do
             svc=$(jq -r .servicio "$f"); tag=$(jq -r .tag "$f"); dig=$(jq -r .digest "$f")
             # yq viene preinstalado en los runners de GitHub.
-            yq -i ".servicios.\"$svc\".imagen.tag = \"$tag\" | .servicios.\"$svc\".imagen.digest = \"$dig\"" deploy/envs/prod/values.yaml
+            # db-migraciones es un Job, no un servicio con Rollout.
+            if [ "$svc" = "db-migraciones" ]; then ruta=".migraciones"; else ruta=".servicios.\"$svc\""; fi
+            yq -i "$ruta.imagen.tag = \"$tag\" | $ruta.imagen.digest = \"$dig\"" deploy/envs/prod/values.yaml
             echo "- $svc → $tag ($dig)" >> "$GITHUB_STEP_SUMMARY"
           done
       - name: Commit del bump (lo jala Argo CD)

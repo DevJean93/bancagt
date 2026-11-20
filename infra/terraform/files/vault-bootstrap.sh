@@ -44,5 +44,7 @@ vault kv get secret/banca/db >/dev/null 2>&1 || \
   vault kv put secret/banca/db username=banca password="$SEED_DB_PASSWORD" >/dev/null
 vault kv get secret/banca/s3 >/dev/null 2>&1 || \
   vault kv put secret/banca/s3 ACCESS_KEY_ID=bancagt ACCESS_SECRET_KEY="$SEED_S3_SECRET" >/dev/null
+vault kv get secret/banca/jwt >/dev/null 2>&1 || \
+  vault kv put secret/banca/jwt privada="$SEED_JWT_PRIVADA" publica="$SEED_JWT_PUBLICA" >/dev/null
 
 echo "Vault configurado correctamente"

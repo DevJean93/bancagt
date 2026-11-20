@@ -1,0 +1,173 @@
+// =====================================================================
+// Núcleo bancario (esquema "core") - BancaGT
+// Fuente de verdad del modelo de datos: Prisma genera el cliente tipado y
+// las migraciones SQL versionadas (prisma/migrations). La aplicación nunca
+// ejecuta SQL escrito a mano.
+// =====================================================================
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["core"]
+}
+
+enum TipoCuenta {
+  MONETARIA
+  AHORRO
+
+  @@schema("core")
+}
+
+enum Moneda {
+  GTQ
+  USD
+
+  @@schema("core")
+}
+
+enum EstadoCuenta {
+  ACTIVA
+  BLOQUEADA
+  CERRADA
+
+  @@schema("core")
+}
+
+enum TipoMovimiento {
+  CREDITO
+  DEBITO
+
+  @@schema("core")
+}
+
+enum Categoria {
+  SALARIO
+  TRANSFERENCIA
+  SERVICIOS
+  SUPERMERCADO
+  RESTAURANTE
+  COMBUSTIBLE
+  CAJERO
+  SALUD
+  EDUCACION
+  ENTRETENIMIENTO
+  COMPRAS
+  INTERESES
+  COMISIONES
+  OTROS
+
+  @@schema("core")
+}
+
+enum EstadoTransferencia {
+  COMPLETADA
+  RECHAZADA
+
+  @@schema("core")
+}
+
+model Cliente {
+  id            String         @id @default(uuid()) @db.Uuid
+  codigo        String         @unique @db.VarChar(12) // CIF del cliente
+  nombres       String         @db.VarChar(80)
+  apellidos     String         @db.VarChar(80)
+  correo        String         @unique @db.VarChar(120)
+  telefono      String         @db.VarChar(20)
+  creadoEn      DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  cuentas       Cuenta[]
+  beneficiarios Beneficiario[]
+  transferencias Transferencia[]
+
+  @@map("clientes")
+  @@schema("core")
+}
+
+model Cuenta {
+  id              String        @id @default(uuid()) @db.Uuid
+  numero          String        @unique @db.VarChar(12)
+  clienteId       String        @map("cliente_id") @db.Uuid
+  cliente         Cliente       @relation(fields: [clienteId], references: [id])
+  tipo            TipoCuenta
+  moneda          Moneda
+  alias           String?       @db.VarChar(40)
+  estado          EstadoCuenta  @default(ACTIVA)
+  // Contable: todo lo registrado. Disponible: contable menos retenciones
+  // (p. ej. cheques en reserva). Las transferencias usan el disponible.
+  saldoContable   Decimal       @map("saldo_contable") @db.Decimal(14, 2)
+  saldoDisponible Decimal       @map("saldo_disponible") @db.Decimal(14, 2)
+  abiertaEn       DateTime      @default(now()) @map("abierta_en") @db.Timestamptz(3)
+  movimientos     Movimiento[]
+  enviadas        Transferencia[] @relation("origen")
+  recibidas       Transferencia[] @relation("destino")
+  comoBeneficiario Beneficiario[]
+
+  @@index([clienteId])
+  @@map("cuentas")
+  @@schema("core")
+}
+
+model Movimiento {
+  id              BigInt         @id @default(autoincrement())
+  cuentaId        String         @map("cuenta_id") @db.Uuid
+  cuenta          Cuenta         @relation(fields: [cuentaId], references: [id])
+  fecha           DateTime       @default(now()) @db.Timestamptz(3)
+  tipo            TipoMovimiento
+  categoria       Categoria
+  descripcion     String         @db.VarChar(120)
+  monto           Decimal        @db.Decimal(14, 2)
+  saldoPosterior  Decimal        @map("saldo_posterior") @db.Decimal(14, 2)
+  referencia      String?        @db.VarChar(40)
+  transferenciaId String?        @map("transferencia_id") @db.Uuid
+  transferencia   Transferencia? @relation(fields: [transferenciaId], references: [id])
+
+  @@index([cuentaId, fecha(sort: Desc)])
+  @@map("movimientos")
+  @@schema("core")
+}
+
+model Transferencia {
+  id              String              @id @default(uuid()) @db.Uuid
+  // Correlativo para el número de comprobante (TRF-00001234).
+  numero          BigInt              @unique @default(autoincrement())
+  clienteId       String              @map("cliente_id") @db.Uuid
+  cliente         Cliente             @relation(fields: [clienteId], references: [id])
+  idempotencyKey  String              @map("idempotency_key") @db.VarChar(64)
+  cuentaOrigenId  String              @map("cuenta_origen_id") @db.Uuid
+  cuentaOrigen    Cuenta              @relation("origen", fields: [cuentaOrigenId], references: [id])
+  cuentaDestinoId String              @map("cuenta_destino_id") @db.Uuid
+  cuentaDestino   Cuenta              @relation("destino", fields: [cuentaDestinoId], references: [id])
+  monto           Decimal             @db.Decimal(14, 2)
+  moneda          Moneda
+  concepto        String              @db.VarChar(80)
+  estado          EstadoTransferencia
+  creadaEn        DateTime            @default(now()) @map("creada_en") @db.Timestamptz(3)
+  movimientos     Movimiento[]
+
+  // Idempotencia por cliente: reintentar la misma operación no duplica el cargo.
+  @@unique([clienteId, idempotencyKey])
+  @@index([clienteId, creadaEn(sort: Desc)])
+  @@index([cuentaOrigenId, creadaEn])
+  @@map("transferencias")
+  @@schema("core")
+}
+
+model Beneficiario {
+  id        String   @id @default(uuid()) @db.Uuid
+  clienteId String   @map("cliente_id") @db.Uuid
+  cliente   Cliente  @relation(fields: [clienteId], references: [id])
+  cuentaId  String   @map("cuenta_id") @db.Uuid
+  cuenta    Cuenta   @relation(fields: [cuentaId], references: [id])
+  alias     String   @db.VarChar(40)
+  creadoEn  DateTime @default(now()) @map("creado_en") @db.Timestamptz(3)
+
+  @@unique([clienteId, cuentaId])
+  @@map("beneficiarios")
+  @@schema("core")
+}

@@ -1,0 +1,34 @@
+{
+  "name": "@bancagt/db-core",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Modelo de datos del núcleo bancario (Prisma ORM): esquema, migraciones y cliente tipado",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "prisma",
+    "prisma.config.ts"
+  ],
+  "scripts": {
+    "generar": "prisma generate",
+    "migrar": "prisma migrate deploy",
+    "migracion:nueva": "prisma migrate dev --create-only"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "prisma": "7.10.1"
+  }
+}

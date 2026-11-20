@@ -1,0 +1,63 @@
+// =====================================================================
+// Identidad (esquema "identidad") - propiedad exclusiva de api-identidad.
+// Las credenciales viven separadas del núcleo bancario: un compromiso de
+// las APIs de negocio no expone los hashes de contraseñas.
+// =====================================================================
+
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  moduleFormat           = "esm"
+  importFileExtension    = "js"
+  generatedFileExtension = "ts"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["identidad"]
+}
+
+enum TipoEventoAcceso {
+  LOGIN_OK
+  LOGIN_FALLIDO
+  BLOQUEO
+  RENOVACION
+  CIERRE
+
+  @@schema("identidad")
+}
+
+model Usuario {
+  id               String         @id @default(uuid()) @db.Uuid
+  usuario          String         @unique @db.VarChar(40)
+  // Referencia al cliente del núcleo bancario (otro esquema, sin FK física).
+  clienteId        String         @unique @map("cliente_id") @db.Uuid
+  nombreMostrar    String         @map("nombre_mostrar") @db.VarChar(80)
+  // Hash Argon2id (OWASP / PCI-DSS 8.3.2: credenciales ilegibles en reposo).
+  hashContrasena   String         @map("hash_contrasena") @db.VarChar(200)
+  intentosFallidos Int            @default(0) @map("intentos_fallidos")
+  bloqueadoHasta   DateTime?      @map("bloqueado_hasta") @db.Timestamptz(3)
+  ultimoAcceso     DateTime?      @map("ultimo_acceso") @db.Timestamptz(3)
+  creadoEn         DateTime       @default(now()) @map("creado_en") @db.Timestamptz(3)
+  eventos          EventoAcceso[]
+
+  @@map("usuarios")
+  @@schema("identidad")
+}
+
+// Bitácora de autenticación (PCI-DSS 10.2.1.4: intentos de acceso inválidos).
+model EventoAcceso {
+  id        BigInt           @id @default(autoincrement())
+  usuarioId String?          @map("usuario_id") @db.Uuid
+  usuarioRel Usuario?        @relation(fields: [usuarioId], references: [id])
+  usuario   String           @db.VarChar(40)
+  tipo      TipoEventoAcceso
+  ip        String           @db.VarChar(45)
+  userAgent String           @map("user_agent") @db.VarChar(200)
+  fecha     DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([usuarioId, fecha(sort: Desc)])
+  @@index([fecha])
+  @@map("eventos_acceso")
+  @@schema("identidad")
+}

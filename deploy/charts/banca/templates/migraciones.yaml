@@ -1,0 +1,84 @@
+{{- $m := .Values.migraciones }}
+{{- if $m.imagen.tag }}
+# Migraciones de esquema (Prisma migrate deploy) + datos semilla.
+# Hook de Argo CD: se ejecuta en cada sincronización, DESPUÉS de la base de
+# datos (wave -1) y ANTES de los microservicios (wave 1). Es idempotente.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migraciones
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app.kubernetes.io/name: db-migraciones
+    app.kubernetes.io/part-of: bancagt
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-migraciones
+        app.kubernetes.io/part-of: bancagt
+        banca/cliente-db: "true"
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-migraciones
+          image: {{ include "banca.imagen" (dict "nombre" "db-migraciones" "svc" $m "raiz" $) | quote }}
+          env:
+            - name: APP_ENV
+              value: prod
+            - name: HOME
+              value: /tmp
+            - name: SEMBRAR
+              value: {{ $m.sembrar | quote }}
+            - name: DB_HOST
+              value: banca-db-rw
+            - name: DB_NAME
+              value: banca
+            - name: DB_USER_FILE
+              value: /etc/banca/db/username
+            - name: DB_PASSWORD_FILE
+              value: /etc/banca/db/password
+            - name: DB_SSL_CA
+              value: /etc/banca/db-ca/ca.crt
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            privileged: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: db-credenciales, mountPath: /etc/banca/db, readOnly: true }
+            - { name: db-ca, mountPath: /etc/banca/db-ca, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 128Mi }
+        - name: db-credenciales
+          secret:
+            secretName: banca-db-app
+            items:
+              - { key: username, path: username }
+              - { key: password, path: password }
+        - name: db-ca
+          secret:
+            secretName: banca-db-ca
+            items:
+              - { key: ca.crt, path: ca.crt }
+{{- end }}
