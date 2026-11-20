@@ -24,6 +24,9 @@ data:
 
     export const options = {
       insecureSkipTLSVerify: true, // CA interna del laboratorio
+      // k6 vacía las cookies al final de cada iteración por defecto; la sesión
+      // (cookie HttpOnly) debe sobrevivir entre iteraciones como en un navegador.
+      noCookiesReset: true,
       scenarios: {
         sondeo: {
           executor: 'constant-arrival-rate',
@@ -53,6 +56,16 @@ data:
       return cuentas.length > 0;
     }
 
+    // Si el servidor rechaza la sesión (expiró, se rotaron llaves o se recreó la
+    // base), se descarta y la próxima iteración inicia sesión de nuevo.
+    function revisarSesion(r) {
+      if (r.status === 401) {
+        sesionHasta = 0;
+        cuentas = [];
+      }
+      return r;
+    }
+
     export default function () {
       if (!asegurarSesion()) return;
       const n = Math.floor(Math.random() * 100);
@@ -60,19 +73,19 @@ data:
         // Transferencia de Q1 entre cuentas propias, alternando el sentido (saldo neto constante).
         sentido = !sentido;
         const [a, b] = sentido ? [cuentas[0], cuentas[1]] : [cuentas[1], cuentas[0]];
-        const r = http.post(
+        const r = revisarSesion(http.post(
           `${BASE}/api/v1/transferencias`,
           JSON.stringify({ cuentaOrigenId: a.id, destino: { tipo: 'PROPIA', cuentaId: b.id }, monto: '1.00', concepto: 'Monitoreo sintético' }),
           { headers: { ...CABECERAS, 'Idempotency-Key': `sondeo-${__VU}-${__ITER}-${Date.now()}` }, tags: { flujo: 'transferencia' } },
-        );
+        ));
         check(r, { 'transferencia 2xx o regla de negocio': (x) => x.status === 201 || x.status === 422 });
       } else if (n < 20) {
         check(http.get(`${BASE}/`, { tags: { flujo: 'portal' } }), { 'portal 200': (x) => x.status === 200 });
       } else if (n < 45) {
         const c = cuentas[n % cuentas.length];
-        check(http.get(`${BASE}/api/v1/cuentas/${c.id}/movimientos?tamano=10`, { tags: { flujo: 'movimientos' } }), { 'movimientos 200': (x) => x.status === 200 });
+        check(revisarSesion(http.get(`${BASE}/api/v1/cuentas/${c.id}/movimientos?tamano=10`, { tags: { flujo: 'movimientos' } })), { 'movimientos 200': (x) => x.status === 200 });
       } else {
-        check(http.get(`${BASE}/api/v1/cuentas`, { tags: { flujo: 'saldo' } }), { 'saldo 200': (x) => x.status === 200 });
+        check(revisarSesion(http.get(`${BASE}/api/v1/cuentas`, { tags: { flujo: 'saldo' } })), { 'saldo 200': (x) => x.status === 200 });
       }
     }
 ---
@@ -94,7 +107,7 @@ spec:
         app.kubernetes.io/name: k6-sondeo
       annotations:
         # Reinicia el pod cuando cambia el script.
-        bancagt/version-script: "2"
+        bancagt/version-script: "3"
     spec:
       automountServiceAccountToken: false
       securityContext:
