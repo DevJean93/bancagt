@@ -42,6 +42,8 @@ export async function crearServidor(op: OpcionesServidor): Promise<{ app: Servid
     logger: {
       level: op.config.LOG_LEVEL,
       base: { servicio: op.nombre, version: op.config.APP_VERSION },
+      // Nivel como texto ("info", "warn") para que Grafana/Loki lo reconozcan y coloreen.
+      formatters: { level: (etiqueta: string) => ({ level: etiqueta }) },
       // Nunca se registran credenciales ni cookies de sesión (PCI-DSS 3.3 / 10).
       redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'],
     },

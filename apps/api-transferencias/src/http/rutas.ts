@@ -13,6 +13,9 @@ export interface Dependencias {
   beneficiarios: GestionarBeneficiarios;
 }
 
+/** User-Agent del sondeo k6 (deploy/platform/sre/sinteticos.yaml). Solo clasifica la bitácora; no otorga permisos. */
+export const AGENTE_SINTETICO = 'bancagt-sonda-sintetica';
+
 // ---------- Contratos de entrada ----------
 const MONTO = z.string().regex(/^\d{1,9}(\.\d{1,2})?$/, 'Monto con hasta 2 decimales');
 const CLAVE_IDEMPOTENCIA = z.string().regex(/^[A-Za-z0-9-]{8,64}$/);
@@ -79,8 +82,13 @@ export function registrarRutas(app: Servidor, d: Dependencias): void {
       const sesion = sesionDe(req);
       // Bitácora de auditoría de cada intento (PCI-DSS 10.2): quién, qué, cuánto y
       // resultado. Solo números enmascarados; nunca datos de autenticación.
+      // Canal de origen: el monitoreo sintético se identifica con su User-Agent
+      // para poder separarlo de las operaciones de clientes en los tableros.
+      const agente = String(req.headers['user-agent'] ?? '');
       const auditoria = {
         evento: 'transferencia',
+        canal: agente.startsWith(AGENTE_SINTETICO) ? 'sintetico' : 'web',
+        usuario: sesion.nombre,
         clienteId: sesion.clienteId,
         tipoDestino: req.body.destino.tipo,
         monto: req.body.monto,

@@ -27,6 +27,8 @@ data:
       // k6 vacía las cookies al final de cada iteración por defecto; la sesión
       // (cookie HttpOnly) debe sobrevivir entre iteraciones como en un navegador.
       noCookiesReset: true,
+      // Identifica el tráfico sintético en la bitácora (campo canal="sintetico").
+      userAgent: 'bancagt-sonda-sintetica/1.0 (k6)',
       scenarios: {
         sondeo: {
           executor: 'constant-arrival-rate',
@@ -107,7 +109,7 @@ spec:
         app.kubernetes.io/name: k6-sondeo
       annotations:
         # Reinicia el pod cuando cambia el script.
-        bancagt/version-script: "3"
+        bancagt/version-script: "4"
     spec:
       automountServiceAccountToken: false
       securityContext:
