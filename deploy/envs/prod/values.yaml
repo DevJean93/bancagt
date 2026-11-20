@@ -7,28 +7,28 @@ servicios:
       digest: "sha256:013c0976b81ba1c78d5ce6aef7de6822b4bcbdba840d7d30d5b34da960c582d0"
   api-identidad:
     imagen:
-      tag: "1.0.6-a7d3b54"
-      digest: "sha256:d847ee207ff2ebbe90bb7a31857df8a8190962f7ea112cb787af9a237a92b5c4"
+      tag: "1.0.11-0a04968"
+      digest: "sha256:7cf4eb649f9a78229b72cda91b397f401cfe6832ac24c5325be4a112cf79adc0"
   api-cuentas:
     imagen:
-      tag: "1.0.6-a7d3b54"
-      digest: "sha256:89c940611a2950416e8fbfd69e5d32f10ef882c83c763e8b26552bcadf4ad157"
+      tag: "1.0.11-0a04968"
+      digest: "sha256:81c0009ba5209c636dc923dbeb35dbf25bdb11c41bcb79eca627b0593b61a2fc"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
   api-transferencias:
     imagen:
-      tag: "1.0.9-a288bf2"
-      digest: "sha256:aea2b33ae3967dcfbf07a6bce034099004e0a789750035319194495276971efd"
+      tag: "1.0.11-0a04968"
+      digest: "sha256:627f11c46b8a6f24f7f9827ca29401eb71aef18d37cd6fa6a38129ddff6ec921"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
 migraciones:
   imagen:
-    tag: "1.0.7-7addd92"
-    digest: "sha256:90a7047e974c399ae12dc3ab4ab0a5c85d389b72bd0e0f5aa4624bff04fefe05"
+    tag: "1.0.11-0a04968"
+    digest: "sha256:64e08ce21ee93731d3bfdf565f12482d199f2218eb50e488945756b9f5309dcf"
 baseDatos:
   generacion: 3 # g1: esquema SQL anterior · g2: quedó con WAL del clúster viejo · g3: clúster actual (migraciones Prisma)
   recuperarDe: ""
