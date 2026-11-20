@@ -32,8 +32,10 @@ function urlMigracion(esquema: string): string {
   u.password = conexion.contrasena();
   u.searchParams.set('schema', esquema);
   if (conexion.rutaCa) {
+    // En la URL de Prisma, "sslcert" es la CA que valida al SERVIDOR (no un
+    // certificado de cliente como en libpq) y "sslaccept=strict" exige validarla.
     u.searchParams.set('sslmode', 'require');
-    u.searchParams.set('sslrootcert', conexion.rutaCa);
+    u.searchParams.set('sslcert', conexion.rutaCa);
     u.searchParams.set('sslaccept', 'strict');
   }
   return u.toString();
