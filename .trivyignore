@@ -1,4 +1,12 @@
 # Excepciones documentadas al escaneo de configuración (Trivy config).
-# Cada línea debe tener justificación y estar reflejada en la matriz de riesgos.
-#
-# (vacío: no hay excepciones aprobadas por ahora)
+# Cada línea tiene su justificación (control compensatorio).
+
+# DS-0026 (LOW) "No HEALTHCHECK defined": en Kubernetes la salud la verifican
+# las sondas startup/liveness/readiness definidas en el Rollout; el
+# HEALTHCHECK de Docker se ignora en el runtime de Kubernetes.
+DS-0026
+
+# KSV-0125 (MEDIUM) registros de confianza: aplica solo al sondeo sintético
+# (grafana/k6, namespace banca-sinteticos). En banca-prod la política Kyverno
+# "banca-registros-permitidos" restringe los registros en tiempo de admisión.
+KSV-0125

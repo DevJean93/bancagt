@@ -105,13 +105,13 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Trivy config (Terraform, Dockerfiles, Helm)
+      # 1) Reporte completo (todas las severidades) para la pestaña Security.
+      - name: Trivy config - reporte SARIF
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.2
           scan-type: config
           scan-ref: .
-          severity: CRITICAL,HIGH
-          exit-code: '1'
           trivyignores: .trivyignore
           format: sarif
           output: trivy-config.sarif
@@ -120,6 +120,17 @@ jobs:
         with:
           sarif_file: trivy-config.sarif
           category: trivy-config
+      # 2) Compuerta: el pipeline se detiene solo con hallazgos HIGH o CRITICAL.
+      - name: Trivy config - compuerta (falla con HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.2
+          scan-type: config
+          scan-ref: .
+          trivyignores: .trivyignore
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          format: table
 
   # ---------------------------------------------------------------
   servicio:
@@ -167,6 +178,7 @@ jobs:
       - name: SCA - Trivy filesystem (dependencias)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.2
           scan-type: fs
           scan-ref: apps/${{ matrix.servicio }}
           scanners: vuln
@@ -189,6 +201,7 @@ jobs:
       - name: Trivy image (reporte SARIF)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.2
           image-ref: ${{ env.IMAGEN }}:${{ steps.ver.outputs.tag }}
           format: sarif
           output: trivy-${{ matrix.servicio }}.sarif
@@ -200,6 +213,7 @@ jobs:
       - name: Trivy image (compuerta - falla con CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.2
           image-ref: ${{ env.IMAGEN }}:${{ steps.ver.outputs.tag }}
           severity: CRITICAL
           ignore-unfixed: false

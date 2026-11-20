@@ -3,20 +3,20 @@
 servicios:
   web-banca:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.1-854ecac"
+      digest: "sha256:f429dcaaaad3395617496b724a56100fcbd117ddcf9891c7c42bdf988ba4d4d7"
   api-cuentas:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.1-854ecac"
+      digest: "sha256:10c7e21f53c28a6f3dfae6e6c876095605f4ce68a6ab12ce357143da8054d1c0"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
       FAULT_LATENCY_MS: "0"
   api-transferencias:
     imagen:
-      tag: ""
-      digest: ""
+      tag: "1.0.1-854ecac"
+      digest: "sha256:6debd37a069ed138835a5a18a07877300560b0d6c86135a9cadf8b77c0f9d901"
     env:
       LOG_LEVEL: info
       FAULT_RATE: "0"
