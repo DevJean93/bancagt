@@ -23,23 +23,23 @@ spec:
       rules:
         - record: banca:sli_errores:ratio_rate5m
           expr: |
-            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[5m]))
+            (sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[5m])) or vector(0))
             / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[5m]))
         - record: banca:sli_errores:ratio_rate30m
           expr: |
-            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[30m]))
+            (sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[30m])) or vector(0))
             / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[30m]))
         - record: banca:sli_errores:ratio_rate1h
           expr: |
-            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[1h]))
+            (sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[1h])) or vector(0))
             / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[1h]))
         - record: banca:sli_errores:ratio_rate6h
           expr: |
-            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[6h]))
+            (sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[6h])) or vector(0))
             / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[6h]))
         - record: banca:sli_errores:ratio_rate30d
           expr: |
-            sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[30d]))
+            (sum(rate(traefik_service_requests_total{service=~"banca-prod-.*", code=~"5.."}[30d])) or vector(0))
             / sum(rate(traefik_service_requests_total{service=~"banca-prod-.*"}[30d]))
         - record: banca:sli_disponibilidad:ratio_rate30d
           expr: 1 - banca:sli_errores:ratio_rate30d

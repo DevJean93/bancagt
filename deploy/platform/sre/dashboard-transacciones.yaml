@@ -58,7 +58,7 @@ data:
           "datasource": { "type": "loki", "uid": "loki" },
           "targets": [{ "expr": "sum(sum_over_time({namespace=\"banca-prod\", container=\"api-transferencias\"} | json | evento=\"transferencia\" | canal=~\"$canal\" | resultado=\"completada\" | moneda=\"GTQ\" | unwrap monto [$__range]))", "refId": "A", "queryType": "instant" }],
           "options": { "reduceOptions": { "calcs": ["lastNotNull"] } },
-          "fieldConfig": { "defaults": { "unit": "currencyGTQ", "decimals": 2, "noValue": "0" } } },
+          "fieldConfig": { "defaults": { "unit": "prefix:Q ", "decimals": 2, "noValue": "0" } } },
 
         { "type": "timeseries", "title": "Transferencias por resultado (canal: $canal)", "gridPos": { "x": 0, "y": 5, "w": 14, "h": 8 },
           "datasource": { "type": "loki", "uid": "loki" },
