@@ -23,9 +23,6 @@ spec:
     namespace: banca-prod
   syncPolicy:
     automated:
-      # Explícito: si alguien desactiva el auto-sync desde la consola,
-      # la app raíz lo vuelve a encender desde Git.
-      enabled: true
       prune: true
       selfHeal: true
     managedNamespaceMetadata:
