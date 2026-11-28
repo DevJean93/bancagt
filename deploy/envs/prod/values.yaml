@@ -3,8 +3,8 @@
 servicios:
   web-banca:
     imagen:
-      tag: "1.0.17-cc43d0a"
-      digest: "sha256:e1368e45e5c5fb8f8166b5fa1303ba0ee63fd032ba7150a98b483d1537974cd5"
+      tag: "1.0.22-bb56b2a"
+      digest: "sha256:6a2b5c19a51d0ab55a5fa9e5a0f02d73ea528ffc99ba09fffb645fc489bc91e4"
   api-identidad:
     imagen:
       tag: "1.0.11-0a04968"
