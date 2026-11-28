@@ -103,7 +103,7 @@ export function Inicio() {
     <div className="aparecer">
       <Encabezado
         titulo={`${saludo()}, ${sesion?.nombre.split(' ')[0] ?? ''}`}
-        descripcion="Este es el resumen de sus productos."
+        descripcion="Este es el resumen de sus productos Financieros."
         acciones={
           <>
             <Link to="/transferir" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-primario px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-secundario">
